@@ -470,7 +470,7 @@ function renderSavingsBalancesList() {
     const totalBalance = getTotalSavingsBalance();
     let html = '<div class="savings-balance-total"><span>合計残高</span><span class="total-amount">' + formatCurrency(totalBalance) + '</span></div>';
     savingsBalances.items.forEach(function(item) {
-        html += '<div class="savings-balance-item"><div class="savings-balance-info"><div class="savings-balance-name">' + item.name + '</div><div class="savings-balance-amount">' + formatCurrency(item.balance) + '</div></div><div class="item-actions"><button class="btn btn-small btn-success" onclick="openDepositModal('' + item.id + '')">入金</button><button class="btn btn-small btn-warning" onclick="openWithdrawModal('' + item.id + '')">取崩</button><button class="btn btn-small" onclick="openTransferModal('' + item.id + '')">振替</button><button class="btn btn-small" onclick="viewSavingsHistory('' + item.id + '')">履歴</button><button class="btn btn-small btn-danger" onclick="deleteSavingsBalance('' + item.id + '')">削除</button></div></div>';
+        html += '<div class="savings-balance-item"><div class="savings-balance-info"><div class="savings-balance-name">' + item.name + '</div><div class="savings-balance-amount">' + formatCurrency(item.balance) + '</div></div><div class="item-actions"><button class="btn btn-small btn-success" onclick="openDepositModal(\'' + item.id + '\')">入金</button><button class="btn btn-small btn-warning" onclick="openWithdrawModal(\'' + item.id + '\')">取崩</button><button class="btn btn-small" onclick="openTransferModal(\'' + item.id + '\')">振替</button><button class="btn btn-small" onclick="viewSavingsHistory(\'' + item.id + '\')">履歴</button><button class="btn btn-small btn-danger" onclick="deleteSavingsBalance(\'' + item.id + '\')">削除</button></div></div>';
     });
     container.innerHTML = html;
 }
@@ -508,7 +508,7 @@ function renderHistory() {
         const parts = key.split('-');
         const year = parts[0], month = parts[1];
         const isCurrent = key === getMonthKey(currentMonth);
-        return '<div class="history-item' + (isCurrent ? ' current' : '') + '" onclick="goToMonth('' + key + '')"><div class="history-month">' + year + '年' + parseInt(month) + '月' + (isCurrent ? ' ◀ 現在' : '') + '</div></div>';
+        return '<div class="history-item' + (isCurrent ? ' current' : '') + '" onclick="goToMonth(\'' + key + '\')"><div class="history-month">' + year + '年' + parseInt(month) + '月' + (isCurrent ? ' ◀ 現在' : '') + '</div></div>';
     }).join('');
 }
 
