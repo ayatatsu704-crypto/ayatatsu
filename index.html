@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>あやたつファイナンス</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- ログイン画面 -->
+    <div id="loginScreen" class="full-screen">
+        <div class="auth-card">
+            <h1 class="app-logo">あやたつファイナンス</h1>
+            <p class="auth-desc">ふたりの家計を一緒に管理しましょう</p>
+            <button class="btn-google" onclick="signInWithGoogle()">
+                <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                Googleでログイン
+            </button>
+            <div class="divider">または</div>
+            <button class="btn-demo" onclick="startDemoMode()">デモで試す</button>
+        </div>
+    </div>
+
+    <!-- 世帯設定画面 -->
+    <div id="householdSetupScreen" class="full-screen hidden">
+        <div class="auth-card">
+            <h2>世帯を設定しましょう</h2>
+            <p class="auth-desc">初めての方は新規作成、パートナーが既に作成している場合は参加を選んでください。</p>
+
+            <button class="btn btn-primary btn-full" onclick="createHousehold()">+ 新しく作成する</button>
+
+            <div class="divider">または</div>
+
+            <div class="input-group">
+                <label for="joinCodeInput">参加コードを入力</label>
+                <input type="text" id="joinCodeInput" placeholder="例: AB3X7Y" maxlength="8"
+                    style="text-transform:uppercase; letter-spacing: 0.2em; font-size: 1.2rem; text-align: center;">
+            </div>
+            <button class="btn btn-primary btn-full" onclick="joinHousehold()">参加する</button>
+        </div>
+    </div>
+
+    <!-- 世帯作成完了画面 -->
+    <div id="householdCreatedScreen" class="full-screen hidden">
+        <div class="auth-card">
+            <div class="success-icon">✓</div>
+            <h2>世帯を作成しました！</h2>
+            <p class="auth-desc">このコードを奥様に共有してください。奥様がアプリを開いたとき「参加する」に入力すれば、同じデータを使えるようになります。</p>
+
+            <div class="household-code-box">
+                <div class="household-code-label">参加コード</div>
+                <div id="newHouseholdCode" class="household-code-text"></div>
+                <button class="btn btn-small" onclick="copyNewHouseholdCode()">コピー</button>
+            </div>
+
+            <button class="btn btn-primary btn-full" onclick="finishHouseholdSetup()" style="margin-top: 1.5rem;">
+                アプリを始める
+            </button>
+        </div>
+    </div>
+
+    <!-- アプリ本体 -->
+    <div id="appContent" class="hidden">
+
+        <header>
+            <div class="header-top">
+                <h1>あやたつファイナンス</h1>
+                <div class="header-actions">
+                    <button class="header-btn" onclick="showHouseholdCode()" title="参加コード">🔗</button>
+                    <button class="header-btn" onclick="confirmSignOut()" title="ログアウト">👤</button>
+                </div>
+            </div>
+            <div class="month-selector">
+                <button id="prevMonth">&lt;</button>
+                <span id="currentMonth"></span>
+                <button id="nextMonth">&gt;</button>
+            </div>
+        </header>
+
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="balance">Balance Sheet</button>
+            <button class="tab-btn" data-tab="savings">積み立て</button>
+            <button class="tab-btn" data-tab="advance">立替払い</button>
+            <button class="tab-btn" data-tab="settings">設定</button>
+            <button class="tab-btn" data-tab="history">履歴</button>
+        </nav>
+
+        <main>
+            <!-- Balance Sheet タブ -->
+            <section id="balance" class="tab-content active">
+                <div class="card">
+                    <h2>銀行残高</h2>
+                    <div class="input-group">
+                        <label for="bankBalance">現在の残高</label>
+                        <input type="number" id="bankBalance" placeholder="0">
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>計算結果</h2>
+                    <div class="result-grid">
+                        <div class="result-item">
+                            <span class="label">必要額合計</span>
+                            <span class="value" id="targetAmount">¥0</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="label">現在の残高</span>
+                            <span class="value" id="currentBalance">¥0</span>
+                        </div>
+                        <div class="result-item highlight">
+                            <span class="label">不足額</span>
+                            <span class="value" id="shortage">¥0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>今月の入金額</h2>
+                    <div class="person-summary">
+                        <div class="person-summary-item">
+                            <span class="person-summary-name" id="summaryPerson1Name">Person 1</span>
+                            <span class="person-summary-amount" id="summaryPerson1Total">¥0</span>
+                        </div>
+                        <div class="person-summary-item">
+                            <span class="person-summary-name" id="summaryPerson2Name">Person 2</span>
+                            <span class="person-summary-amount" id="summaryPerson2Total">¥0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>各自の入金額（内訳）</h2>
+                    <div class="person-results">
+                        <div class="person-card" id="person1Card">
+                            <h3 id="person1Name">Person 1</h3>
+                            <div class="breakdown">
+                                <div class="breakdown-item">
+                                    <span>生活費負担</span>
+                                    <span id="person1Living">¥0</span>
+                                </div>
+                                <div class="breakdown-item">
+                                    <span>家賃負担</span>
+                                    <span id="person1Rent">¥0</span>
+                                </div>
+                                <div class="breakdown-item">
+                                    <span>積み立て</span>
+                                    <span id="person1Savings">¥0</span>
+                                </div>
+                                <div class="breakdown-item">
+                                    <span>立替払い済</span>
+                                    <span id="person1Advance">¥0</span>
+                                </div>
+                                <div class="breakdown-item total">
+                                    <span>入金額</span>
+                                    <span id="person1Total">¥0</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="person-card" id="person2Card">
+                            <h3 id="person2Name">Person 2</h3>
+                            <div class="breakdown">
+                                <div class="breakdown-item">
+                                    <span>生活費負担</span>
+                                    <span id="person2Living">¥0</span>
+                                </div>
+                                <div class="breakdown-item">
+                                    <span>家賃負担</span>
+                                    <span id="person2Rent">¥0</span>
+                                </div>
+                                <div class="breakdown-item">
+                                    <span>積み立て</span>
+                                    <span id="person2Savings">¥0</span>
+                                </div>
+                                <div class="breakdown-item">
+                                    <span>立替払い済</span>
+                                    <span id="person2Advance">¥0</span>
+                                </div>
+                                <div class="breakdown-item total">
+                                    <span>入金額</span>
+                                    <span id="person2Total">¥0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Balance Sheet</h2>
+                    <div class="bs-block">
+                        <div class="bs-section-label">必要額（引当）</div>
+                        <div class="bs-row">
+                            <span>生活資金目標</span>
+                            <span id="targetLiving">¥0</span>
+                        </div>
+                        <div class="bs-row">
+                            <span>今月の積み立て</span>
+                            <span id="totalSavings">¥0</span>
+                        </div>
+                        <div class="bs-row">
+                            <span>累計積立金残高</span>
+                            <span id="cumulativeSavings">¥0</span>
+                        </div>
+                        <div class="bs-row bs-total">
+                            <span>必要額合計</span>
+                            <span id="requiredTotal">¥0</span>
+                        </div>
+                    </div>
+                    <div class="bs-block">
+                        <div class="bs-section-label">資産</div>
+                        <div class="bs-row">
+                            <span>銀行残高</span>
+                            <span id="totalBalance">¥0</span>
+                        </div>
+                    </div>
+                    <div class="bs-row bs-difference">
+                        <span>差異（過不足）</span>
+                        <span id="balanceDifference" class="value">¥0</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 積み立て タブ -->
+            <section id="savings" class="tab-content">
+                <div class="card">
+                    <h2>今月の積み立て</h2>
+                    <div id="savingsList"></div>
+                    <button id="addSavings" class="btn btn-primary">+ 項目を追加</button>
+                </div>
+
+                <div class="card">
+                    <h2>積立残高（累計）</h2>
+                    <p class="card-description">積み立てた資金の残高を管理します。取り崩しや振り替えができます。</p>
+                    <div id="savingsBalancesList"></div>
+                    <button class="btn btn-primary" onclick="openAddBalanceModal()">+ 積立口座を追加</button>
+                </div>
+
+                <!-- 積み立て項目モーダル -->
+                <div id="savingsModal" class="modal">
+                    <div class="modal-content">
+                        <h3>積み立て項目</h3>
+                        <div class="input-group">
+                            <label for="savingsName">目的</label>
+                            <input type="text" id="savingsName" placeholder="例: ハワイ旅行" list="savingsNameList">
+                            <datalist id="savingsNameList"></datalist>
+                        </div>
+                        <div class="input-group">
+                            <label for="savingsPerson1">
+                                <span id="savingsPerson1Label">Person 1</span> の積み立て
+                            </label>
+                            <input type="number" id="savingsPerson1" placeholder="0">
+                        </div>
+                        <div class="input-group">
+                            <label for="savingsPerson2">
+                                <span id="savingsPerson2Label">Person 2</span> の積み立て
+                            </label>
+                            <input type="number" id="savingsPerson2" placeholder="0">
+                        </div>
+                        <div class="modal-actions">
+                            <button id="cancelSavings" class="btn">キャンセル</button>
+                            <button id="saveSavings" class="btn btn-primary">保存</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 積立口座追加モーダル -->
+                <div id="addBalanceModal" class="modal">
+                    <div class="modal-content">
+                        <h3>積立口座を追加</h3>
+                        <div class="input-group">
+                            <label for="newBalanceName">名前</label>
+                            <input type="text" id="newBalanceName" placeholder="例: 旅行資金">
+                        </div>
+                        <div class="input-group">
+                            <label for="newBalanceAmount">初期残高</label>
+                            <input type="number" id="newBalanceAmount" placeholder="0">
+                        </div>
+                        <div class="modal-actions">
+                            <button class="btn" onclick="closeAddBalanceModal()">キャンセル</button>
+                            <button class="btn btn-primary" onclick="saveNewBalance()">追加</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 入金モーダル -->
+                <div id="depositModal" class="modal">
+                    <div class="modal-content">
+                        <h3 id="depositModalTitle">入金</h3>
+                        <div class="input-group">
+                            <label for="depositAmount">金額</label>
+                            <input type="number" id="depositAmount" placeholder="0">
+                        </div>
+                        <div class="input-group">
+                            <label for="depositDescription">メモ（任意）</label>
+                            <input type="text" id="depositDescription" placeholder="">
+                        </div>
+                        <div class="modal-actions">
+                            <button class="btn" onclick="closeDepositModal()">キャンセル</button>
+                            <button class="btn btn-primary" onclick="saveDeposit()">入金</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 取り崩しモーダル -->
+                <div id="withdrawModal" class="modal">
+                    <div class="modal-content">
+                        <h3 id="withdrawModalTitle">取り崩し</h3>
+                        <div class="current-balance-display">
+                            現在の残高: <span id="withdrawCurrentBalance">¥0</span>
+                        </div>
+                        <div class="input-group">
+                            <label for="withdrawAmount">金額</label>
+                            <input type="number" id="withdrawAmount" placeholder="0">
+                        </div>
+                        <div class="input-group">
+                            <label for="withdrawDescription">用途（任意）</label>
+                            <input type="text" id="withdrawDescription" placeholder="例: 航空券購入">
+                        </div>
+                        <div class="modal-actions">
+                            <button class="btn" onclick="closeWithdrawModal()">キャンセル</button>
+                            <button class="btn btn-warning" onclick="saveWithdraw()">取り崩し</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 振り替えモーダル -->
+                <div id="transferModal" class="modal">
+                    <div class="modal-content">
+                        <h3 id="transferModalTitle">振り替え</h3>
+                        <div class="current-balance-display">
+                            現在の残高: <span id="transferCurrentBalance">¥0</span>
+                        </div>
+                        <div class="input-group">
+                            <label for="transferTo">振替先</label>
+                            <select id="transferTo"></select>
+                        </div>
+                        <div class="input-group">
+                            <label for="transferAmount">金額</label>
+                            <input type="number" id="transferAmount" placeholder="0">
+                        </div>
+                        <div class="input-group">
+                            <label for="transferDescription">メモ（任意）</label>
+                            <input type="text" id="transferDescription" placeholder="">
+                        </div>
+                        <div class="modal-actions">
+                            <button class="btn" onclick="closeTransferModal()">キャンセル</button>
+                            <button class="btn btn-primary" onclick="saveTransfer()">振り替え</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 履歴モーダル -->
+                <div id="historyModal" class="modal">
+                    <div class="modal-content modal-large">
+                        <h3 id="historyModalTitle">履歴</h3>
+                        <div id="savingsHistoryList" class="history-list"></div>
+                        <div class="modal-actions">
+                            <button class="btn" onclick="closeHistoryModal()">閉じる</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 立替払い タブ -->
+            <section id="advance" class="tab-content">
+                <div class="card">
+                    <h2>立替払い一覧</h2>
+                    <div id="advanceList"></div>
+                    <button id="addAdvance" class="btn btn-primary">+ 立替を追加</button>
+                </div>
+
+                <div id="advanceModal" class="modal">
+                    <div class="modal-content">
+                        <h3>立替払い</h3>
+                        <div class="input-group">
+                            <label for="advanceDescription">内容</label>
+                            <input type="text" id="advanceDescription" placeholder="例: 電気代" list="advanceDescriptionList">
+                            <datalist id="advanceDescriptionList"></datalist>
+                        </div>
+                        <div class="input-group">
+                            <label for="advanceAmount">金額</label>
+                            <input type="number" id="advanceAmount" placeholder="0">
+                        </div>
+                        <div class="input-group">
+                            <label for="advancePerson">立替者</label>
+                            <select id="advancePerson">
+                                <option value="1">Person 1</option>
+                                <option value="2">Person 2</option>
+                            </select>
+                        </div>
+                        <div class="modal-actions">
+                            <button id="cancelAdvance" class="btn">キャンセル</button>
+                            <button id="saveAdvance" class="btn btn-primary">保存</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 設定 タブ -->
+            <section id="settings" class="tab-content">
+                <div class="card">
+                    <h2>基本設定</h2>
+                    <div class="input-group">
+                        <label for="person1NameInput">1人目の名前</label>
+                        <input type="text" id="person1NameInput" placeholder="例: あや">
+                    </div>
+                    <div class="input-group">
+                        <label for="person2NameInput">2人目の名前</label>
+                        <input type="text" id="person2NameInput" placeholder="例: たつ">
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>金額設定</h2>
+                    <div class="input-group">
+                        <label for="livingTarget">生活資金目標額</label>
+                        <input type="number" id="livingTarget" placeholder="300000">
+                    </div>
+                    <div class="input-group">
+                        <label for="rentAmount">家賃総額</label>
+                        <input type="number" id="rentAmount" placeholder="0">
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>負担割合（生活費）</h2>
+                    <div class="ratio-group">
+                        <div class="input-group">
+                            <label for="livingRatio1"><span id="ratioLabel1">Person 1</span></label>
+                            <input type="number" id="livingRatio1" step="0.01" min="0" max="1" placeholder="0.4">
+                        </div>
+                        <div class="input-group">
+                            <label for="livingRatio2"><span id="ratioLabel2">Person 2</span></label>
+                            <input type="number" id="livingRatio2" step="0.01" min="0" max="1" placeholder="0.6">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>負担割合（家賃）</h2>
+                    <div class="ratio-group">
+                        <div class="input-group">
+                            <label for="rentRatio1"><span id="rentRatioLabel1">Person 1</span></label>
+                            <input type="number" id="rentRatio1" step="0.01" min="0" max="1" placeholder="0.45">
+                        </div>
+                        <div class="input-group">
+                            <label for="rentRatio2"><span id="rentRatioLabel2">Person 2</span></label>
+                            <input type="number" id="rentRatio2" step="0.01" min="0" max="1" placeholder="0.55">
+                        </div>
+                    </div>
+                </div>
+
+                <button id="saveSettings" class="btn btn-primary btn-full">設定を保存</button>
+            </section>
+
+            <!-- 履歴 タブ -->
+            <section id="history" class="tab-content">
+                <div class="card">
+                    <h2>月別履歴</h2>
+                    <div id="historyList"></div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 参加コード表示モーダル -->
+        <div id="householdCodeModal" class="modal">
+            <div class="modal-content">
+                <h3>参加コード</h3>
+                <p style="font-size:0.9rem; color: var(--text-light); margin-bottom: 1rem;">
+                    奥様にこのコードを共有してください。アプリを開いて「参加する」に入力すると、同じデータを使えるようになります。
+                </p>
+                <div class="household-code-box">
+                    <div class="household-code-label">参加コード</div>
+                    <div id="householdCodeDisplay" class="household-code-text"></div>
+                    <button class="btn btn-small" onclick="copyHouseholdCode()">コピー</button>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" onclick="closeHouseholdCodeModal()">閉じる</button>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- #appContent -->
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <script src="firebase-config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
