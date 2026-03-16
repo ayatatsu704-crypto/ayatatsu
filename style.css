@@ -180,14 +180,20 @@ body {
     margin-bottom: 0.75rem;
 }
 
+/* ===== スティッキーヘッダー ===== */
+.sticky-top {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+}
+
 /* ===== ヘッダー ===== */
 header {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: white;
     padding: 0.875rem 1rem;
-    position: sticky;
-    top: 0;
-    z-index: 100;
     box-shadow: 0 2px 8px rgba(79,126,247,0.3);
 }
 
@@ -301,6 +307,7 @@ main {
     padding: 1rem;
     max-width: 600px;
     margin: 0 auto;
+    padding-top: calc(1rem + 110px);
     padding-bottom: 3rem;
 }
 
@@ -479,10 +486,8 @@ main {
 }
 
 .person-summary-name {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
 }
 
 .person-summary-item:first-child .person-summary-name { color: var(--person1); }

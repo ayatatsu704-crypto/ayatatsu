@@ -210,6 +210,8 @@ function setupHouseholdListener() {
     if (demoMode) {
         const s = localStorage.getItem('demo_settings');
         if (s) settings = Object.assign({}, defaultSettings, JSON.parse(s));
+        if (settings.person1Name === 'Person 1') settings.person1Name = defaultSettings.person1Name;
+        if (settings.person2Name === 'Person 2') settings.person2Name = defaultSettings.person2Name;
         const sb = localStorage.getItem('demo_savings_balances');
         if (sb) savingsBalances = JSON.parse(sb);
         updateUI();
@@ -220,7 +222,11 @@ function setupHouseholdListener() {
         .onSnapshot(function(doc) {
             if (!doc.exists) return;
             const data = doc.data();
-            if (data.settings) settings = Object.assign({}, defaultSettings, data.settings);
+            if (data.settings) {
+                settings = Object.assign({}, defaultSettings, data.settings);
+                if (settings.person1Name === 'Person 1') settings.person1Name = defaultSettings.person1Name;
+                if (settings.person2Name === 'Person 2') settings.person2Name = defaultSettings.person2Name;
+            }
             if (data.savingsBalances) savingsBalances = data.savingsBalances;
             updateUI();
         });
@@ -362,23 +368,26 @@ function getTotalSavingsBalance() {
 function calculateResults() {
     const bankBalance = monthData.bankBalance || 0;
     const livingTarget = settings.livingTarget || 0;
-    const shortage = Math.max(0, livingTarget - bankBalance);
+    const livingShortage = Math.max(0, livingTarget - bankBalance);
     const person1Savings = monthData.savings.reduce(function(sum, s) { return sum + (s.person1 || 0); }, 0);
     const person2Savings = monthData.savings.reduce(function(sum, s) { return sum + (s.person2 || 0); }, 0);
     const totalSavings = person1Savings + person2Savings;
+    const cumulativeSavings = getTotalSavingsBalance();
     const person1Advance = monthData.advances.filter(function(a) { return a.person === 1; }).reduce(function(sum, a) { return sum + (a.amount || 0); }, 0);
     const person2Advance = monthData.advances.filter(function(a) { return a.person === 2; }).reduce(function(sum, a) { return sum + (a.amount || 0); }, 0);
-    const person1Living = shortage * settings.livingRatio1;
-    const person2Living = shortage * settings.livingRatio2;
+    const person1Living = livingShortage * settings.livingRatio1;
+    const person2Living = livingShortage * settings.livingRatio2;
     const person1Rent = settings.rentAmount * settings.rentRatio1;
     const person2Rent = settings.rentAmount * settings.rentRatio2;
     const person1Total = person1Living + person1Rent + person1Savings - person1Advance;
     const person2Total = person2Living + person2Rent + person2Savings - person2Advance;
-    const requiredTotal = livingTarget + totalSavings;
+    const requiredTotal = livingTarget + totalSavings + cumulativeSavings;
+    const shortage = Math.max(0, requiredTotal - bankBalance);
     const balanceDifference = bankBalance - requiredTotal;
     return {
         bankBalance: bankBalance, livingTarget: livingTarget, shortage: shortage,
-        totalSavings: totalSavings, requiredTotal: requiredTotal, balanceDifference: balanceDifference,
+        totalSavings: totalSavings, cumulativeSavings: cumulativeSavings,
+        requiredTotal: requiredTotal, balanceDifference: balanceDifference,
         totalBalance: bankBalance,
         person1: { living: person1Living, rent: person1Rent, savings: person1Savings, advance: person1Advance, total: person1Total },
         person2: { living: person2Living, rent: person2Rent, savings: person2Savings, advance: person2Advance, total: person2Total }
@@ -400,10 +409,12 @@ function updateUI() {
 }
 
 function updateNames() {
-    const p1 = settings.person1Name || 'Person 1';
-    const p2 = settings.person2Name || 'Person 2';
+    const p1 = settings.person1Name || 'あや';
+    const p2 = settings.person2Name || 'たつ';
     document.getElementById('person1Name').textContent = p1;
     document.getElementById('person2Name').textContent = p2;
+    document.getElementById('summaryPerson1Name').textContent = p1;
+    document.getElementById('summaryPerson2Name').textContent = p2;
     document.getElementById('savingsPerson1Label').textContent = p1;
     document.getElementById('savingsPerson2Label').textContent = p2;
     document.getElementById('ratioLabel1').textContent = p1;
@@ -420,7 +431,7 @@ function updateBalanceSheet() {
     if (document.activeElement !== bankBalanceInput) {
         bankBalanceInput.value = monthData.bankBalance || '';
     }
-    document.getElementById('targetAmount').textContent = formatCurrency(results.livingTarget);
+    document.getElementById('targetAmount').textContent = formatCurrency(results.requiredTotal);
     document.getElementById('currentBalance').textContent = formatCurrency(results.bankBalance);
     document.getElementById('shortage').textContent = formatCurrency(results.shortage);
     document.getElementById('person1Living').textContent = formatCurrency(results.person1.living);
@@ -433,8 +444,11 @@ function updateBalanceSheet() {
     document.getElementById('person2Savings').textContent = formatCurrency(results.person2.savings);
     document.getElementById('person2Advance').textContent = formatCurrency(results.person2.advance);
     document.getElementById('person2Total').textContent = formatCurrency(results.person2.total);
+    document.getElementById('summaryPerson1Total').textContent = formatCurrency(results.person1.total);
+    document.getElementById('summaryPerson2Total').textContent = formatCurrency(results.person2.total);
     document.getElementById('targetLiving').textContent = formatCurrency(results.livingTarget);
     document.getElementById('totalSavings').textContent = formatCurrency(results.totalSavings);
+    document.getElementById('cumulativeSavings').textContent = formatCurrency(results.cumulativeSavings);
     document.getElementById('requiredTotal').textContent = formatCurrency(results.requiredTotal);
     document.getElementById('totalBalance').textContent = formatCurrency(results.totalBalance);
     const diffEl = document.getElementById('balanceDifference');
@@ -542,8 +556,8 @@ function initEventListeners() {
     });
 
     document.getElementById('saveSettings').addEventListener('click', function() {
-        settings.person1Name = document.getElementById('person1NameInput').value || 'Person 1';
-        settings.person2Name = document.getElementById('person2NameInput').value || 'Person 2';
+        settings.person1Name = document.getElementById('person1NameInput').value || 'あや';
+        settings.person2Name = document.getElementById('person2NameInput').value || 'たつ';
         settings.livingTarget = parseFloat(document.getElementById('livingTarget').value) || 0;
         settings.rentAmount = parseFloat(document.getElementById('rentAmount').value) || 0;
         settings.livingRatio1 = parseFloat(document.getElementById('livingRatio1').value) || 0;
