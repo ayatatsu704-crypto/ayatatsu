@@ -335,9 +335,13 @@ async function initNewMonth(monthKey) {
         savings: prevData.savings.map(function(s) { return Object.assign({}, s); })
     });
 
+    // 積立残高をFirestoreから直接取得（タイミング問題を回避）
+    var householdDoc = await db.collection('households').doc(householdId).get();
+    var currentSavingsBalances = (householdDoc.data().savingsBalances || { items: [] });
+
     // 積立残高に今月分を自動追加（重複防止フラグ）
     var today = new Date().toISOString().split('T')[0];
-    var newItems = savingsBalances.items.map(function(item) {
+    var newItems = currentSavingsBalances.items.map(function(item) {
         var applied = (item.appliedMonths || []).indexOf(monthKey) !== -1;
         if (applied) return item;
         var saving = prevData.savings.find(function(s) { return s.name === item.name; });
@@ -359,7 +363,7 @@ async function initNewMonth(monthKey) {
 
     var batch = db.batch();
     batch.set(db.collection('households').doc(householdId).collection('months').doc(monthKey), newData);
-    batch.update(db.collection('households').doc(householdId), { 'savingsBalances.items': newItems });
+    batch.update(db.collection('households').doc(householdId), { savingsBalances: { items: newItems } });
     await batch.commit();
 }
 
