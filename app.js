@@ -23,6 +23,7 @@ const defaultMonthData = {
     bankBalance: 0,
     savings: [],
     advances: [],
+    savingsBalances: { items: [] },
     monthSettings: { ...defaultCalcSettings }
 };
 
@@ -270,7 +271,6 @@ function setupHouseholdListener() {
             if (data.lastCalcSettings) {
                 lastCalcSettings = Object.assign({}, defaultCalcSettings, data.lastCalcSettings);
             }
-            if (data.savingsBalances) savingsBalances = data.savingsBalances;
             updateUI();
         });
 }
@@ -309,10 +309,12 @@ function setupMonthListener(monthKey) {
                 if (!monthData.monthSettings) monthData.monthSettings = Object.assign({}, lastCalcSettings);
                 if (!monthData.savings) monthData.savings = [];
                 if (!monthData.advances) monthData.advances = [];
+                if (!monthData.savingsBalances) monthData.savingsBalances = { items: [] };
             } else {
                 monthData = newMonthData();
                 initNewMonth(monthKey);
             }
+            savingsBalances = monthData.savingsBalances;
             updateUI();
         });
 }
@@ -335,22 +337,17 @@ async function initNewMonth(monthKey) {
         savings: prevData.savings.map(function(s) { return Object.assign({}, s); })
     });
 
-    // 積立残高をFirestoreから直接取得（タイミング問題を回避）
-    var householdDoc = await db.collection('households').doc(householdId).get();
-    var currentSavingsBalances = (householdDoc.data().savingsBalances || { items: [] });
-
-    // 積立残高に今月分を自動追加（重複防止フラグ）
+    // 前月の積立残高を引き継ぎ、今月の積立分を加算
+    var prevSavingsBalances = prevData.savingsBalances || { items: [] };
     var today = new Date().toISOString().split('T')[0];
-    var newItems = currentSavingsBalances.items.map(function(item) {
-        var applied = (item.appliedMonths || []).indexOf(monthKey) !== -1;
-        if (applied) return item;
+    var newItems = prevSavingsBalances.items.map(function(item) {
         var saving = prevData.savings.find(function(s) { return s.name === item.name; });
-        if (!saving) return item;
+        if (!saving) return Object.assign({}, item);
         var contribution = (saving.person1 || 0) + (saving.person2 || 0);
-        if (contribution === 0) return item;
+        if (contribution === 0) return Object.assign({}, item);
         return Object.assign({}, item, {
             balance: (item.balance || 0) + contribution,
-            appliedMonths: (item.appliedMonths || []).concat([monthKey]),
+            appliedMonths: undefined,
             history: (item.history || []).concat([{
                 id: Date.now() + Math.random(),
                 date: today,
@@ -361,10 +358,10 @@ async function initNewMonth(monthKey) {
         });
     });
 
-    var batch = db.batch();
-    batch.set(db.collection('households').doc(householdId).collection('months').doc(monthKey), newData);
-    batch.update(db.collection('households').doc(householdId), { savingsBalances: { items: newItems } });
-    await batch.commit();
+    newData.savingsBalances = { items: newItems };
+
+    await db.collection('households').doc(householdId)
+        .collection('months').doc(monthKey).set(newData);
 }
 
 async function loadAllMonthKeys() {
@@ -413,8 +410,9 @@ function saveMonthData() {
 }
 
 function saveSavingsBalances() {
+    monthData.savingsBalances = savingsBalances;
     if (demoMode) { localStorage.setItem('demo_savings_balances', JSON.stringify(savingsBalances)); updateUI(); return; }
-    db.collection('households').doc(householdId).update({ savingsBalances: savingsBalances });
+    saveMonthData();
 }
 
 function getAllMonthKeys() {
