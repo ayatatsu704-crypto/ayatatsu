@@ -700,15 +700,13 @@ main {
 }
 
 .bs-col-header {
-    font-size: 0.68rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-light);
+    color: var(--text);
     text-align: center;
-    padding: 0.5rem 0.75rem;
+    padding: 0.625rem 0.75rem;
     border-bottom: 0.5px solid var(--separator);
-    background: var(--bg);
+    background: var(--card-bg);
 }
 
 .bs-col-total {
@@ -725,14 +723,22 @@ main {
 .bs-detail-row {
     display: flex;
     justify-content: space-between;
-    padding: 0.25rem 0.875rem 0.25rem 1.75rem;
-    font-size: 0.72rem;
+    padding: 0.3rem 0.875rem 0.3rem 1.875rem;
+    font-size: 0.78rem;
     color: var(--text-light);
-    background: rgba(0,0,0,0.01);
+    background: var(--bg);
+    border-left: 2.5px solid var(--border);
+    margin-left: 1rem;
+    border-bottom: 0.5px solid var(--separator);
+}
+
+.bs-detail-row:last-child {
+    border-bottom: none;
 }
 
 .bs-detail-row span:last-child {
     font-weight: 500;
+    color: var(--text);
 }
 
 .bs-block {
