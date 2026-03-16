@@ -399,6 +399,14 @@ main {
     background-color: var(--bg);
 }
 
+#bankBalance {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    background: transparent;
+    padding: 0.5rem 0;
+}
+
 .input-group input:focus,
 .input-group select:focus {
     outline: none;
@@ -459,7 +467,8 @@ main {
     background: var(--card-bg);
     border-right: 0.5px solid var(--separator);
 }
-.person-summary-item:last-child { border-right: none; }
+.person-summary-item:first-child { background: var(--person1-light); }
+.person-summary-item:last-child { background: var(--person2-light); border-right: none; }
 
 .person-summary-name {
     font-size: 0.72rem; font-weight: 600;
