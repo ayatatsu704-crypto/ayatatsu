@@ -554,7 +554,8 @@ function renderSavingsList() {
         return;
     }
     container.innerHTML = monthData.savings.map(function(s, i) {
-        return '<div class="savings-item"><div class="savings-item-info"><div class="savings-item-name">' + s.name + '</div><div class="savings-item-amounts">' + p1 + ': ' + formatCurrency(s.person1) + ' / ' + p2 + ': ' + formatCurrency(s.person2) + '</div></div><div class="item-actions"><button class="btn btn-small" onclick="editSavings(' + i + ')">編集</button><button class="btn btn-small btn-danger" onclick="deleteSavings(' + i + ')">削除</button></div></div>';
+        var total = (s.person1 || 0) + (s.person2 || 0);
+        return '<div class="savings-item"><div class="savings-item-info"><div class="savings-item-name">' + s.name + '<span class="savings-item-total">' + formatCurrency(total) + '</span></div><div class="savings-item-amounts">' + p1 + ': ' + formatCurrency(s.person1) + ' / ' + p2 + ': ' + formatCurrency(s.person2) + '</div></div><div class="item-actions"><button class="btn btn-small" onclick="editSavings(' + i + ')">編集</button><button class="btn btn-small btn-danger" onclick="deleteSavings(' + i + ')">削除</button></div></div>';
     }).join('');
 }
 

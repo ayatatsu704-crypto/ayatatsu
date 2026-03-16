@@ -702,7 +702,11 @@ main {
 .savings-item-name, .advance-item-desc {
     font-weight: 500; color: var(--text);
     margin-bottom: 0.2rem; font-size: 0.95rem;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: flex; align-items: center; gap: 0.5rem;
+}
+.savings-item-total {
+    font-size: 0.95rem; font-weight: 700;
+    color: var(--primary);
 }
 .savings-item-amounts, .advance-item-detail { font-size: 0.78rem; color: var(--text-light); }
 
