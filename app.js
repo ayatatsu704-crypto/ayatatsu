@@ -547,7 +547,7 @@ function renderSavingsBalancesList() {
                 var amountClass = (h.type === 'withdraw' || h.type === 'transfer_out') ? 'negative' : 'positive';
                 var sign = amountClass === 'negative' ? '-' : '+';
                 var cancelBtn = h.type !== 'create' ? '<button class="btn btn-small btn-cancel" onclick="cancelSavingsTransaction(\'' + item.id + '\',' + realIndex + ')">取消</button>' : '';
-                var descHtml = h.description ? '<span class="hi-desc">' + h.description + '</span>' : '';
+                var descHtml = (h.description && h.type !== 'create') ? '<span class="hi-desc">' + h.description + '</span>' : '';
                 html += '<div class="history-inline-row">'
                     + '<div class="hi-left"><span class="hi-date">' + dateStr + '</span><span class="hi-type ' + amountClass + '">' + typeLabel + '</span>' + descHtml + '</div>'
                     + '<div class="hi-right"><span class="hi-amount ' + amountClass + '">' + sign + formatCurrency(h.amount) + '</span>' + cancelBtn + '</div>'
