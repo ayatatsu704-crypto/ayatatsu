@@ -10,8 +10,8 @@ const defaultSettings = {
     rentAmount: 0,
     livingRatio1: 0.4,
     livingRatio2: 0.6,
-    rentRatio1: 0.45,
-    rentRatio2: 0.55
+    person1Color: '#4f7ef7',
+    person2Color: '#ec4899'
 };
 
 const defaultMonthData = {
@@ -67,6 +67,35 @@ function generateHouseholdId() {
         code += chars[Math.floor(Math.random() * chars.length)];
     }
     return code;
+}
+
+// ============================================================
+// カラーユーティリティ
+// ============================================================
+function hexToRgba(hex, alpha) {
+    var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+}
+function shadeColor(hex, percent) {
+    var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    r = Math.min(255, Math.max(0, r + Math.round(r * percent / 100)));
+    g = Math.min(255, Math.max(0, g + Math.round(g * percent / 100)));
+    b = Math.min(255, Math.max(0, b + Math.round(b * percent / 100)));
+    return '#' + r.toString(16).padStart(2,'0') + g.toString(16).padStart(2,'0') + b.toString(16).padStart(2,'0');
+}
+function applyPersonColors() {
+    var c1 = settings.person1Color || '#4f7ef7';
+    var c2 = settings.person2Color || '#ec4899';
+    var root = document.documentElement.style;
+    root.setProperty('--person1', c1);
+    root.setProperty('--primary', c1);
+    root.setProperty('--primary-dark', shadeColor(c1, -20));
+    root.setProperty('--person1-light', hexToRgba(c1, 0.08));
+    root.setProperty('--person1-border', hexToRgba(c1, 0.25));
+    root.setProperty('--person2', c2);
+    root.setProperty('--person2-dark', shadeColor(c2, -15));
+    root.setProperty('--person2-light', hexToRgba(c2, 0.06));
+    root.setProperty('--person2-border', hexToRgba(c2, 0.2));
 }
 
 // ============================================================
@@ -188,6 +217,7 @@ function showScreen(screen) {
     document.getElementById('householdSetupScreen').classList.toggle('hidden', screen !== 'householdSetup');
     document.getElementById('householdCreatedScreen').classList.toggle('hidden', screen !== 'householdCreated');
     document.getElementById('appContent').classList.toggle('hidden', screen !== 'app');
+    if (screen === 'app') requestAnimationFrame(adjustMainPadding);
 }
 
 // ============================================================
@@ -368,21 +398,23 @@ function getTotalSavingsBalance() {
 function calculateResults() {
     const bankBalance = monthData.bankBalance || 0;
     const livingTarget = settings.livingTarget || 0;
-    const livingShortage = Math.max(0, livingTarget - bankBalance);
     const person1Savings = monthData.savings.reduce(function(sum, s) { return sum + (s.person1 || 0); }, 0);
     const person2Savings = monthData.savings.reduce(function(sum, s) { return sum + (s.person2 || 0); }, 0);
     const totalSavings = person1Savings + person2Savings;
     const cumulativeSavings = getTotalSavingsBalance();
     const person1Advance = monthData.advances.filter(function(a) { return a.person === 1; }).reduce(function(sum, a) { return sum + (a.amount || 0); }, 0);
     const person2Advance = monthData.advances.filter(function(a) { return a.person === 2; }).reduce(function(sum, a) { return sum + (a.amount || 0); }, 0);
-    const person1Living = livingShortage * settings.livingRatio1;
-    const person2Living = livingShortage * settings.livingRatio2;
-    const person1Rent = settings.rentAmount * settings.rentRatio1;
-    const person2Rent = settings.rentAmount * settings.rentRatio2;
-    const person1Total = person1Living + person1Rent + person1Savings - person1Advance;
-    const person2Total = person2Living + person2Rent + person2Savings - person2Advance;
+    const totalAdvances = person1Advance + person2Advance;
+    const person1Rent = settings.rentAmount * settings.livingRatio1;
+    const person2Rent = settings.rentAmount * settings.livingRatio2;
     const requiredTotal = livingTarget + totalSavings + cumulativeSavings;
     const shortage = Math.max(0, requiredTotal - bankBalance);
+    // 生活費負担 = 不足額から家賃・積み立て・立替を除いた残差を負担割合で分担
+    const livingShortage = shortage - settings.rentAmount - totalSavings + totalAdvances;
+    const person1Living = livingShortage * settings.livingRatio1;
+    const person2Living = livingShortage * settings.livingRatio2;
+    const person1Total = person1Living + person1Rent + person1Savings - person1Advance;
+    const person2Total = person2Living + person2Rent + person2Savings - person2Advance;
     const balanceDifference = bankBalance - requiredTotal;
     return {
         bankBalance: bankBalance, livingTarget: livingTarget, shortage: shortage,
@@ -419,10 +451,11 @@ function updateNames() {
     document.getElementById('savingsPerson2Label').textContent = p2;
     document.getElementById('ratioLabel1').textContent = p1;
     document.getElementById('ratioLabel2').textContent = p2;
-    document.getElementById('rentRatioLabel1').textContent = p1;
-    document.getElementById('rentRatioLabel2').textContent = p2;
+    document.getElementById('colorLabel1').textContent = p1;
+    document.getElementById('colorLabel2').textContent = p2;
     const advanceSelect = document.getElementById('advancePerson');
     advanceSelect.innerHTML = '<option value="1">' + p1 + '</option><option value="2">' + p2 + '</option>';
+    applyPersonColors();
 }
 
 function updateBalanceSheet() {
@@ -435,29 +468,46 @@ function updateBalanceSheet() {
     document.getElementById('currentBalance').textContent = formatCurrency(results.bankBalance);
     document.getElementById('shortage').textContent = formatCurrency(results.shortage);
     document.getElementById('person1Living').textContent = formatCurrency(results.person1.living);
-    document.getElementById('person1Rent').textContent = formatCurrency(results.person1.rent);
     document.getElementById('person1Savings').textContent = formatCurrency(results.person1.savings);
-    document.getElementById('person1Advance').textContent = formatCurrency(results.person1.advance);
+    var p1AdvEl = document.getElementById('person1Advance');
+    p1AdvEl.textContent = results.person1.advance > 0 ? '-' + formatCurrency(results.person1.advance) : formatCurrency(0);
+    p1AdvEl.className = results.person1.advance > 0 ? 'negative' : '';
     document.getElementById('person1Total').textContent = formatCurrency(results.person1.total);
     document.getElementById('person2Living').textContent = formatCurrency(results.person2.living);
-    document.getElementById('person2Rent').textContent = formatCurrency(results.person2.rent);
     document.getElementById('person2Savings').textContent = formatCurrency(results.person2.savings);
-    document.getElementById('person2Advance').textContent = formatCurrency(results.person2.advance);
+    var p2AdvEl = document.getElementById('person2Advance');
+    p2AdvEl.textContent = results.person2.advance > 0 ? '-' + formatCurrency(results.person2.advance) : formatCurrency(0);
+    p2AdvEl.className = results.person2.advance > 0 ? 'negative' : '';
     document.getElementById('person2Total').textContent = formatCurrency(results.person2.total);
+    renderAdvanceDetail(1);
+    renderAdvanceDetail(2);
     document.getElementById('summaryPerson1Total').textContent = formatCurrency(results.person1.total);
     document.getElementById('summaryPerson2Total').textContent = formatCurrency(results.person2.total);
+    document.getElementById('summaryPerson1Burden').textContent = formatCurrency(results.person1.total + results.person1.advance);
+    document.getElementById('summaryPerson2Burden').textContent = formatCurrency(results.person2.total + results.person2.advance);
     document.getElementById('targetLiving').textContent = formatCurrency(results.livingTarget);
     document.getElementById('totalSavings').textContent = formatCurrency(results.totalSavings);
     document.getElementById('cumulativeSavings').textContent = formatCurrency(results.cumulativeSavings);
-    document.getElementById('requiredTotal').textContent = formatCurrency(results.requiredTotal);
     document.getElementById('totalBalance').textContent = formatCurrency(results.totalBalance);
-    const diffEl = document.getElementById('balanceDifference');
-    if (results.balanceDifference >= 0) {
-        diffEl.textContent = '+' + formatCurrency(results.balanceDifference);
-        diffEl.className = 'value positive';
+    renderTotalSavingsDetail();
+    renderCumulativeSavingsDetail();
+    var bsDiff = results.balanceDifference; // bankBalance - requiredTotal
+    var balancedTotal = Math.max(results.totalBalance, results.requiredTotal);
+    document.getElementById('totalBalanceSum').textContent = formatCurrency(balancedTotal);
+    document.getElementById('requiredTotal').textContent = formatCurrency(balancedTotal);
+    var deficitRow = document.getElementById('bsDeficitRow');
+    var surplusRow = document.getElementById('bsSurplusRow');
+    if (bsDiff < 0) {
+        deficitRow.style.display = '';
+        surplusRow.style.display = 'none';
+        document.getElementById('bsDeficit').textContent = formatCurrency(-bsDiff);
+    } else if (bsDiff > 0) {
+        deficitRow.style.display = 'none';
+        surplusRow.style.display = '';
+        document.getElementById('bsSurplus').textContent = formatCurrency(bsDiff);
     } else {
-        diffEl.textContent = formatCurrency(results.balanceDifference);
-        diffEl.className = 'value negative';
+        deficitRow.style.display = 'none';
+        surplusRow.style.display = 'none';
     }
 }
 
@@ -484,9 +534,74 @@ function renderSavingsBalancesList() {
     const totalBalance = getTotalSavingsBalance();
     let html = '<div class="savings-balance-total"><span>合計残高</span><span class="total-amount">' + formatCurrency(totalBalance) + '</span></div>';
     savingsBalances.items.forEach(function(item) {
-        html += '<div class="savings-balance-item"><div class="savings-balance-info"><div class="savings-balance-name">' + item.name + '</div><div class="savings-balance-amount">' + formatCurrency(item.balance) + '</div></div><div class="item-actions"><button class="btn btn-small btn-success" onclick="openDepositModal(\'' + item.id + '\')">入金</button><button class="btn btn-small btn-warning" onclick="openWithdrawModal(\'' + item.id + '\')">取崩</button><button class="btn btn-small" onclick="openTransferModal(\'' + item.id + '\')">振替</button><button class="btn btn-small" onclick="viewSavingsHistory(\'' + item.id + '\')">履歴</button><button class="btn btn-small btn-danger" onclick="deleteSavingsBalance(\'' + item.id + '\')">削除</button></div></div>';
+        html += '<div class="savings-balance-item">';
+        html += '<div class="savings-balance-header"><div class="savings-balance-info"><div class="savings-balance-name">' + item.name + '</div><div class="savings-balance-amount">' + formatCurrency(item.balance) + '</div></div>';
+        html += '<div class="item-actions"><button class="btn btn-small btn-warning" onclick="openWithdrawModal(\'' + item.id + '\')">取崩</button><button class="btn btn-small" onclick="openTransferModal(\'' + item.id + '\')">振替</button><button class="btn btn-small btn-danger" onclick="deleteSavingsBalance(\'' + item.id + '\')">削除</button></div></div>';
+        if (item.history && item.history.length > 0) {
+            html += '<div class="savings-history-inline">';
+            item.history.slice().reverse().forEach(function(h, ri) {
+                var realIndex = item.history.length - 1 - ri;
+                var date = new Date(h.date);
+                var dateStr = date.getFullYear() + '/' + (date.getMonth() + 1) + '/' + date.getDate();
+                var typeLabel = { create: '作成', deposit: '入金', withdraw: '取崩', transfer_out: '振替出', transfer_in: '振替入' }[h.type] || h.type;
+                var amountClass = (h.type === 'withdraw' || h.type === 'transfer_out') ? 'negative' : 'positive';
+                var sign = amountClass === 'negative' ? '-' : '+';
+                var cancelBtn = h.type !== 'create' ? '<button class="btn btn-small btn-cancel" onclick="cancelSavingsTransaction(\'' + item.id + '\',' + realIndex + ')">取消</button>' : '';
+                html += '<div class="history-inline-row"><span class="hi-date">' + dateStr + '</span><span class="hi-type">' + typeLabel + '</span><span class="hi-amount ' + amountClass + '">' + sign + formatCurrency(h.amount) + '</span><span class="hi-desc">' + (h.description || '') + '</span>' + cancelBtn + '</div>';
+            });
+            html += '</div>';
+        }
+        html += '</div>';
     });
     container.innerHTML = html;
+}
+
+function populateSavingsNameSelect(selectedName) {
+    var sel = document.getElementById('savingsName');
+    if (savingsBalances.items.length === 0) {
+        sel.innerHTML = '<option value="">（先に積立口座を追加してください）</option>';
+        return;
+    }
+    sel.innerHTML = savingsBalances.items.map(function(item) {
+        var selected = item.name === selectedName ? ' selected' : '';
+        return '<option value="' + item.name + '"' + selected + '>' + item.name + '</option>';
+    }).join('');
+}
+
+function renderTotalSavingsDetail() {
+    var container = document.getElementById('totalSavingsDetail');
+    if (!container) return;
+    if (!monthData.savings || monthData.savings.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    container.innerHTML = monthData.savings.map(function(s) {
+        return '<div class="bs-row bs-detail-row"><span>' + s.name + '</span><span>' + formatCurrency((s.person1 || 0) + (s.person2 || 0)) + '</span></div>';
+    }).join('');
+}
+
+function renderCumulativeSavingsDetail() {
+    const container = document.getElementById('cumulativeSavingsDetail');
+    if (!container) return;
+    if (!savingsBalances.items || savingsBalances.items.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    container.innerHTML = savingsBalances.items.map(function(item) {
+        return '<div class="bs-row bs-detail-row"><span>' + item.name + '</span><span>' + formatCurrency(item.balance) + '</span></div>';
+    }).join('');
+}
+
+function renderAdvanceDetail(person) {
+    const container = document.getElementById('person' + person + 'AdvanceDetail');
+    const advances = (monthData.advances || []).filter(function(a) { return a.person === person; });
+    if (advances.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    container.innerHTML = advances.map(function(a) {
+        return '<div class="breakdown-item breakdown-detail"><span>' + a.description + '</span><span class="negative">-' + formatCurrency(a.amount) + '</span></div>';
+    }).join('');
 }
 
 function renderAdvanceList() {
@@ -503,12 +618,14 @@ function renderAdvanceList() {
 }
 
 function updateSettingsForm() {
-    const fields = ['person1NameInput', 'person2NameInput', 'livingTarget', 'rentAmount', 'livingRatio1', 'livingRatio2', 'rentRatio1', 'rentRatio2'];
-    const keys   = ['person1Name', 'person2Name', 'livingTarget', 'rentAmount', 'livingRatio1', 'livingRatio2', 'rentRatio1', 'rentRatio2'];
+    const fields = ['person1NameInput', 'person2NameInput', 'livingTarget', 'rentAmount', 'livingRatio1', 'livingRatio2'];
+    const keys   = ['person1Name', 'person2Name', 'livingTarget', 'rentAmount', 'livingRatio1', 'livingRatio2'];
     fields.forEach(function(id, i) {
         const el = document.getElementById(id);
         if (document.activeElement !== el) el.value = settings[keys[i]] || '';
     });
+    document.getElementById('person1ColorInput').value = settings.person1Color || '#4f7ef7';
+    document.getElementById('person2ColorInput').value = settings.person2Color || '#ec4899';
 }
 
 function renderHistory() {
@@ -562,15 +679,16 @@ function initEventListeners() {
         settings.rentAmount = parseFloat(document.getElementById('rentAmount').value) || 0;
         settings.livingRatio1 = parseFloat(document.getElementById('livingRatio1').value) || 0;
         settings.livingRatio2 = parseFloat(document.getElementById('livingRatio2').value) || 0;
-        settings.rentRatio1 = parseFloat(document.getElementById('rentRatio1').value) || 0;
-        settings.rentRatio2 = parseFloat(document.getElementById('rentRatio2').value) || 0;
+        settings.person1Color = document.getElementById('person1ColorInput').value;
+        settings.person2Color = document.getElementById('person2ColorInput').value;
+
         saveSettings();
         alert('設定を保存しました');
     });
 
     document.getElementById('addSavings').addEventListener('click', function() {
         editingSavingsIndex = -1;
-        document.getElementById('savingsName').value = '';
+        populateSavingsNameSelect();
         document.getElementById('savingsPerson1').value = '';
         document.getElementById('savingsPerson2').value = '';
         document.getElementById('savingsModal').classList.add('active');
@@ -584,7 +702,7 @@ function initEventListeners() {
         const name = document.getElementById('savingsName').value;
         const person1 = parseFloat(document.getElementById('savingsPerson1').value) || 0;
         const person2 = parseFloat(document.getElementById('savingsPerson2').value) || 0;
-        if (!name) { alert('目的を入力してください'); return; }
+        if (!name) { alert('積立口座を選択してください'); return; }
         if (editingSavingsIndex >= 0) {
             monthData.savings[editingSavingsIndex] = { name: name, person1: person1, person2: person2 };
         } else {
@@ -627,7 +745,7 @@ function initEventListeners() {
 window.editSavings = function(index) {
     editingSavingsIndex = index;
     const s = monthData.savings[index];
-    document.getElementById('savingsName').value = s.name;
+    populateSavingsNameSelect(s.name);
     document.getElementById('savingsPerson1').value = s.person1;
     document.getElementById('savingsPerson2').value = s.person2;
     document.getElementById('savingsModal').classList.add('active');
@@ -796,6 +914,29 @@ window.closeHistoryModal = function() {
     document.getElementById('historyModal').classList.remove('active');
 };
 
+window.cancelSavingsTransaction = function(itemId, historyIndex) {
+    var item = savingsBalances.items.find(function(i) { return i.id === itemId; });
+    if (!item) return;
+    var h = item.history[historyIndex];
+    if (!h || h.type === 'create') return;
+    if (!confirm('この取引を取り消しますか？\n' + h.description + ' ' + formatCurrency(h.amount))) return;
+    if (h.type === 'deposit') {
+        item.balance -= h.amount;
+    } else if (h.type === 'withdraw') {
+        item.balance += h.amount;
+    } else if (h.type === 'transfer_out') {
+        item.balance += h.amount;
+        var toItem = savingsBalances.items.find(function(i) { return i.name === h.to; });
+        if (toItem) toItem.balance -= h.amount;
+    } else if (h.type === 'transfer_in') {
+        item.balance -= h.amount;
+        var fromItem = savingsBalances.items.find(function(i) { return i.name === h.from; });
+        if (fromItem) fromItem.balance += h.amount;
+    }
+    item.history.splice(historyIndex, 1);
+    saveSavingsBalances();
+};
+
 window.deleteSavingsBalance = function(id) {
     const item = savingsBalances.items.find(function(i) { return i.id === id; });
     if (confirm('「' + item.name + '」を削除しますか？\n残高: ' + formatCurrency(item.balance))) {
@@ -823,4 +964,15 @@ window.copyHouseholdCode = function() {
 // ============================================================
 // 初期化
 // ============================================================
-document.addEventListener('DOMContentLoaded', initFirebase);
+function adjustMainPadding() {
+    var stickyEl = document.querySelector('.sticky-top');
+    var mainEl = document.querySelector('main');
+    if (stickyEl && mainEl) {
+        mainEl.style.paddingTop = (stickyEl.offsetHeight + 16) + 'px';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initFirebase();
+    window.addEventListener('resize', adjustMainPadding);
+});
