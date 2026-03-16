@@ -3,27 +3,34 @@
 // ============================================================
 // データ構造
 // ============================================================
+// グローバル設定：名前・カラーのみ
 const defaultSettings = {
     person1Name: 'あや',
     person2Name: 'たつ',
+    person1Color: '#4f7ef7',
+    person2Color: '#ec4899'
+};
+
+// 計算用設定（月ごとに保持）
+const defaultCalcSettings = {
     livingTarget: 300000,
     rentAmount: 0,
     livingRatio1: 0.4,
-    livingRatio2: 0.6,
-    person1Color: '#4f7ef7',
-    person2Color: '#ec4899'
+    livingRatio2: 0.6
 };
 
 const defaultMonthData = {
     bankBalance: 0,
     savings: [],
-    advances: []
+    advances: [],
+    monthSettings: { ...defaultCalcSettings }
 };
 
 // ============================================================
 // 状態管理
 // ============================================================
 let settings = { ...defaultSettings };
+let lastCalcSettings = { ...defaultCalcSettings }; // 直近の計算設定（新月の初期値に使用）
 let currentMonth = new Date();
 let monthData = { ...defaultMonthData, savings: [], advances: [] };
 let savingsBalances = { items: [] };
@@ -167,6 +174,7 @@ window.createHousehold = async function() {
             members: [currentUser.uid],
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             settings: Object.assign({}, defaultSettings),
+            lastCalcSettings: Object.assign({}, defaultCalcSettings),
             savingsBalances: { items: [] }
         });
         householdId = id;
@@ -242,6 +250,8 @@ function setupHouseholdListener() {
         if (s) settings = Object.assign({}, defaultSettings, JSON.parse(s));
         if (settings.person1Name === 'Person 1') settings.person1Name = defaultSettings.person1Name;
         if (settings.person2Name === 'Person 2') settings.person2Name = defaultSettings.person2Name;
+        const lcs = localStorage.getItem('demo_lastCalcSettings');
+        if (lcs) lastCalcSettings = Object.assign({}, defaultCalcSettings, JSON.parse(lcs));
         const sb = localStorage.getItem('demo_savings_balances');
         if (sb) savingsBalances = JSON.parse(sb);
         updateUI();
@@ -257,32 +267,50 @@ function setupHouseholdListener() {
                 if (settings.person1Name === 'Person 1') settings.person1Name = defaultSettings.person1Name;
                 if (settings.person2Name === 'Person 2') settings.person2Name = defaultSettings.person2Name;
             }
+            if (data.lastCalcSettings) {
+                lastCalcSettings = Object.assign({}, defaultCalcSettings, data.lastCalcSettings);
+            }
             if (data.savingsBalances) savingsBalances = data.savingsBalances;
             updateUI();
         });
 }
 
+function newMonthData() {
+    // 新しい月は直近の計算設定を引き継ぐ
+    return Object.assign({}, defaultMonthData, {
+        savings: [],
+        advances: [],
+        monthSettings: Object.assign({}, lastCalcSettings)
+    });
+}
+
 function setupMonthListener(monthKey) {
     if (demoMode) {
         const saved = localStorage.getItem('demo_month_' + monthKey);
-        monthData = saved ? Object.assign({}, defaultMonthData, JSON.parse(saved)) : Object.assign({}, defaultMonthData, { savings: [], advances: [] });
+        if (saved) {
+            monthData = Object.assign({}, defaultMonthData, JSON.parse(saved));
+            if (!monthData.monthSettings) monthData.monthSettings = Object.assign({}, lastCalcSettings);
+        } else {
+            monthData = newMonthData();
+        }
         if (!monthData.savings) monthData.savings = [];
         if (!monthData.advances) monthData.advances = [];
         updateUI();
         return;
     }
     if (unsubscribeMonth) unsubscribeMonth();
-    monthData = Object.assign({}, defaultMonthData, { savings: [], advances: [] });
+    monthData = newMonthData();
     updateUI();
     unsubscribeMonth = db.collection('households').doc(householdId)
         .collection('months').doc(monthKey)
         .onSnapshot(function(doc) {
             if (doc.exists) {
                 monthData = Object.assign({}, defaultMonthData, doc.data());
+                if (!monthData.monthSettings) monthData.monthSettings = Object.assign({}, lastCalcSettings);
                 if (!monthData.savings) monthData.savings = [];
                 if (!monthData.advances) monthData.advances = [];
             } else {
-                monthData = Object.assign({}, defaultMonthData, { savings: [], advances: [] });
+                monthData = newMonthData();
             }
             updateUI();
         });
@@ -303,24 +331,9 @@ async function loadAllMonthKeys() {
     allMonthKeys = snapshot.docs.map(function(d) { return d.id; }).sort().reverse();
 }
 
-// ============================================================
-// 有効設定の取得（月別スナップショット優先）
-// ============================================================
-// 計算に使う設定は monthData.monthSettings に保存されたスナップショットを優先使用する。
-// これにより設定変更が過去の月に遡及しない。
-const CALC_SETTINGS_KEYS = ['livingTarget', 'rentAmount', 'livingRatio1', 'livingRatio2'];
-
-function getEffectiveSettings() {
-    if (monthData.monthSettings) {
-        return Object.assign({}, settings, monthData.monthSettings);
-    }
-    return settings;
-}
-
-function snapshotCalcSettings() {
-    var snap = {};
-    CALC_SETTINGS_KEYS.forEach(function(k) { snap[k] = settings[k]; });
-    return snap;
+// 計算用設定は monthData.monthSettings を常に使用する（月ごとに独立）
+function getCalcSettings() {
+    return Object.assign({}, defaultCalcSettings, monthData.monthSettings || {});
 }
 
 // ============================================================
@@ -333,10 +346,6 @@ function saveSettings() {
 
 function saveMonthData() {
     const key = getMonthKey(currentMonth);
-    // 計算設定が未保存の場合は現在の設定をスナップショットとして保存
-    if (!monthData.monthSettings) {
-        monthData.monthSettings = snapshotCalcSettings();
-    }
     if (demoMode) {
         localStorage.setItem('demo_month_' + key, JSON.stringify(monthData));
         if (!allMonthKeys.includes(key)) { allMonthKeys.unshift(key); allMonthKeys.sort().reverse(); }
@@ -420,7 +429,7 @@ function getTotalSavingsBalance() {
 // 計算ロジック
 // ============================================================
 function calculateResults() {
-    const eff = getEffectiveSettings();
+    const eff = getCalcSettings();
     const bankBalance = monthData.bankBalance || 0;
     const livingTarget = eff.livingTarget || 0;
     const person1Savings = monthData.savings.reduce(function(sum, s) { return sum + (s.person1 || 0); }, 0);
@@ -647,14 +656,20 @@ function renderAdvanceList() {
 }
 
 function updateSettingsForm() {
-    const fields = ['person1NameInput', 'person2NameInput', 'livingTarget', 'rentAmount', 'livingRatio1', 'livingRatio2'];
-    const keys   = ['person1Name', 'person2Name', 'livingTarget', 'rentAmount', 'livingRatio1', 'livingRatio2'];
-    fields.forEach(function(id, i) {
+    const calc = getCalcSettings();
+    // グローバル設定（名前・カラー）
+    ['person1NameInput', 'person2NameInput'].forEach(function(id, i) {
         const el = document.getElementById(id);
-        if (document.activeElement !== el) el.value = settings[keys[i]] || '';
+        const key = ['person1Name', 'person2Name'][i];
+        if (document.activeElement !== el) el.value = settings[key] || '';
     });
     document.getElementById('person1ColorInput').value = settings.person1Color || '#4f7ef7';
     document.getElementById('person2ColorInput').value = settings.person2Color || '#ec4899';
+    // 月別設定（計算用）
+    ['livingTarget', 'rentAmount', 'livingRatio1', 'livingRatio2'].forEach(function(key) {
+        const el = document.getElementById(key);
+        if (el && document.activeElement !== el) el.value = calc[key] !== undefined ? calc[key] : '';
+    });
 }
 
 function renderHistory() {
@@ -703,21 +718,30 @@ function initEventListeners() {
     });
 
     document.getElementById('saveSettings').addEventListener('click', function() {
+        // グローバル設定（名前・カラー）を更新
         settings.person1Name = document.getElementById('person1NameInput').value || 'あや';
         settings.person2Name = document.getElementById('person2NameInput').value || 'たつ';
-        settings.livingTarget = parseFloat(document.getElementById('livingTarget').value) || 0;
-        settings.rentAmount = parseFloat(document.getElementById('rentAmount').value) || 0;
-        settings.livingRatio1 = parseFloat(document.getElementById('livingRatio1').value) || 0;
-        settings.livingRatio2 = parseFloat(document.getElementById('livingRatio2').value) || 0;
         settings.person1Color = document.getElementById('person1ColorInput').value;
         settings.person2Color = document.getElementById('person2ColorInput').value;
-
-        // グローバル設定を保存
         saveSettings();
 
-        // 当月のスナップショットを新しい設定で更新（今後の月にのみ反映）
-        monthData.monthSettings = snapshotCalcSettings();
+        // 計算設定は当月にのみ保存（過去月は変更しない）
+        const newCalc = {
+            livingTarget: parseFloat(document.getElementById('livingTarget').value) || 0,
+            rentAmount: parseFloat(document.getElementById('rentAmount').value) || 0,
+            livingRatio1: parseFloat(document.getElementById('livingRatio1').value) || 0,
+            livingRatio2: parseFloat(document.getElementById('livingRatio2').value) || 0
+        };
+        monthData.monthSettings = newCalc;
         saveMonthData();
+
+        // 次の新しい月がこの設定を引き継げるよう lastCalcSettings を更新
+        lastCalcSettings = Object.assign({}, newCalc);
+        if (demoMode) {
+            localStorage.setItem('demo_lastCalcSettings', JSON.stringify(lastCalcSettings));
+        } else {
+            db.collection('households').doc(householdId).update({ lastCalcSettings: lastCalcSettings });
+        }
 
         alert('設定を保存しました');
     });
