@@ -311,9 +311,56 @@ function setupMonthListener(monthKey) {
                 if (!monthData.advances) monthData.advances = [];
             } else {
                 monthData = newMonthData();
+                initNewMonth(monthKey);
             }
             updateUI();
         });
+}
+
+async function initNewMonth(monthKey) {
+    // 前月のキーを取得
+    var parts = monthKey.split('-');
+    var prevDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 2, 1);
+    var prevKey = getMonthKey(prevDate);
+
+    var prevDoc = await db.collection('households').doc(householdId)
+        .collection('months').doc(prevKey).get();
+    if (!prevDoc.exists) return;
+
+    var prevData = prevDoc.data();
+    if (!prevData.savings || prevData.savings.length === 0) return;
+
+    // 前月の積み立て設定を新月にコピー
+    var newData = Object.assign({}, newMonthData(), {
+        savings: prevData.savings.map(function(s) { return Object.assign({}, s); })
+    });
+
+    // 積立残高に今月分を自動追加（重複防止フラグ）
+    var today = new Date().toISOString().split('T')[0];
+    var newItems = savingsBalances.items.map(function(item) {
+        var applied = (item.appliedMonths || []).indexOf(monthKey) !== -1;
+        if (applied) return item;
+        var saving = prevData.savings.find(function(s) { return s.name === item.name; });
+        if (!saving) return item;
+        var contribution = (saving.person1 || 0) + (saving.person2 || 0);
+        if (contribution === 0) return item;
+        return Object.assign({}, item, {
+            balance: (item.balance || 0) + contribution,
+            appliedMonths: (item.appliedMonths || []).concat([monthKey]),
+            history: (item.history || []).concat([{
+                id: Date.now() + Math.random(),
+                date: today,
+                type: '月次積立',
+                amount: contribution,
+                desc: monthKey + ' 自動積立'
+            }])
+        });
+    });
+
+    var batch = db.batch();
+    batch.set(db.collection('households').doc(householdId).collection('months').doc(monthKey), newData);
+    batch.update(db.collection('households').doc(householdId), { 'savingsBalances.items': newItems });
+    await batch.commit();
 }
 
 async function loadAllMonthKeys() {
