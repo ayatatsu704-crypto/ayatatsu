@@ -726,7 +726,7 @@ main {
     padding: 0.3rem 0.875rem 0.3rem 1.875rem;
     font-size: 0.78rem;
     color: var(--text-light);
-    background: var(--bg);
+    background: var(--card-bg);
     border-left: 2.5px solid var(--border);
     margin-left: 1rem;
     border-bottom: 0.5px solid var(--separator);
