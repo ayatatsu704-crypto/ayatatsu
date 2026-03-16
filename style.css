@@ -70,6 +70,25 @@ body {
     text-align: center;
 }
 
+.mascot-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+    margin-top: -0.5rem;
+}
+
+.mascot-svg {
+    width: 110px;
+    height: auto;
+    animation: mascot-bounce 3s ease-in-out infinite;
+    filter: drop-shadow(0 4px 8px rgba(90,56,37,0.12));
+}
+
+@keyframes mascot-bounce {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-6px); }
+}
+
 .app-logo {
     font-size: 1.5rem;
     font-weight: 700;
