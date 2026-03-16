@@ -437,7 +437,7 @@ main {
 }
 .result-item.highlight .label { font-weight: 600; font-size: 1rem; }
 .result-item.highlight .value {
-    color: var(--warning);
+    color: var(--danger);
     font-size: 1.35rem; font-weight: 700;
     letter-spacing: -0.03em;
 }
