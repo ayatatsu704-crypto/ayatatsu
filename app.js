@@ -368,6 +368,20 @@ function saveSavingsBalances() {
     db.collection('households').doc(householdId).update({ savingsBalances: savingsBalances });
 }
 
+function removeMonthlyTransaction(savingsName) {
+    var mk = getMonthKey(currentMonth);
+    var changed = false;
+    savingsBalances.items.forEach(function(item) {
+        if (item.name !== savingsName) return;
+        var before = (item.transactions || []).length;
+        item.transactions = (item.transactions || []).filter(function(t) {
+            return !(t.type === 'monthly' && t.monthKey === mk);
+        });
+        if (item.transactions.length !== before) changed = true;
+    });
+    if (changed) saveSavingsBalances();
+}
+
 function applyMonthlySavingsContributions() {
     var mk = getMonthKey(currentMonth);
     if (!monthData.savings || monthData.savings.length === 0) return;
@@ -822,7 +836,10 @@ function initEventListeners() {
         const person2 = parseFloat(document.getElementById('savingsPerson2').value) || 0;
         if (!name) { alert('積立口座を選択してください'); return; }
         if (editingSavingsIndex >= 0) {
+            var oldName = monthData.savings[editingSavingsIndex].name;
+            if (oldName !== name) removeMonthlyTransaction(oldName);
             monthData.savings[editingSavingsIndex] = { name: name, person1: person1, person2: person2 };
+            removeMonthlyTransaction(name); // 旧トランザクションを削除し再適用させる
         } else {
             monthData.savings.push({ name: name, person1: person1, person2: person2 });
         }
@@ -871,7 +888,9 @@ window.editSavings = function(index) {
 
 window.deleteSavings = function(index) {
     if (confirm('この積み立て項目を削除しますか？')) {
+        var name = monthData.savings[index].name;
         monthData.savings.splice(index, 1);
+        removeMonthlyTransaction(name);
         saveMonthData();
     }
 };
