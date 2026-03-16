@@ -304,6 +304,26 @@ async function loadAllMonthKeys() {
 }
 
 // ============================================================
+// 有効設定の取得（月別スナップショット優先）
+// ============================================================
+// 計算に使う設定は monthData.monthSettings に保存されたスナップショットを優先使用する。
+// これにより設定変更が過去の月に遡及しない。
+const CALC_SETTINGS_KEYS = ['livingTarget', 'rentAmount', 'livingRatio1', 'livingRatio2'];
+
+function getEffectiveSettings() {
+    if (monthData.monthSettings) {
+        return Object.assign({}, settings, monthData.monthSettings);
+    }
+    return settings;
+}
+
+function snapshotCalcSettings() {
+    var snap = {};
+    CALC_SETTINGS_KEYS.forEach(function(k) { snap[k] = settings[k]; });
+    return snap;
+}
+
+// ============================================================
 // Firestore 書き込み
 // ============================================================
 function saveSettings() {
@@ -313,6 +333,10 @@ function saveSettings() {
 
 function saveMonthData() {
     const key = getMonthKey(currentMonth);
+    // 計算設定が未保存の場合は現在の設定をスナップショットとして保存
+    if (!monthData.monthSettings) {
+        monthData.monthSettings = snapshotCalcSettings();
+    }
     if (demoMode) {
         localStorage.setItem('demo_month_' + key, JSON.stringify(monthData));
         if (!allMonthKeys.includes(key)) { allMonthKeys.unshift(key); allMonthKeys.sort().reverse(); }
@@ -396,8 +420,9 @@ function getTotalSavingsBalance() {
 // 計算ロジック
 // ============================================================
 function calculateResults() {
+    const eff = getEffectiveSettings();
     const bankBalance = monthData.bankBalance || 0;
-    const livingTarget = settings.livingTarget || 0;
+    const livingTarget = eff.livingTarget || 0;
     const person1Savings = monthData.savings.reduce(function(sum, s) { return sum + (s.person1 || 0); }, 0);
     const person2Savings = monthData.savings.reduce(function(sum, s) { return sum + (s.person2 || 0); }, 0);
     const totalSavings = person1Savings + person2Savings;
@@ -405,14 +430,14 @@ function calculateResults() {
     const person1Advance = monthData.advances.filter(function(a) { return a.person === 1; }).reduce(function(sum, a) { return sum + (a.amount || 0); }, 0);
     const person2Advance = monthData.advances.filter(function(a) { return a.person === 2; }).reduce(function(sum, a) { return sum + (a.amount || 0); }, 0);
     const totalAdvances = person1Advance + person2Advance;
-    const person1Rent = settings.rentAmount * settings.livingRatio1;
-    const person2Rent = settings.rentAmount * settings.livingRatio2;
+    const person1Rent = eff.rentAmount * eff.livingRatio1;
+    const person2Rent = eff.rentAmount * eff.livingRatio2;
     const requiredTotal = livingTarget + totalSavings + cumulativeSavings;
     const shortage = Math.max(0, requiredTotal - bankBalance);
     // 生活費負担 = 不足額から家賃・積み立て・立替を除いた残差を負担割合で分担
-    const livingShortage = shortage - settings.rentAmount - totalSavings + totalAdvances;
-    const person1Living = livingShortage * settings.livingRatio1;
-    const person2Living = livingShortage * settings.livingRatio2;
+    const livingShortage = shortage - eff.rentAmount - totalSavings + totalAdvances;
+    const person1Living = livingShortage * eff.livingRatio1;
+    const person2Living = livingShortage * eff.livingRatio2;
     const person1Total = person1Living + person1Rent + person1Savings - person1Advance;
     const person2Total = person2Living + person2Rent + person2Savings - person2Advance;
     const balanceDifference = bankBalance - requiredTotal;
@@ -687,7 +712,13 @@ function initEventListeners() {
         settings.person1Color = document.getElementById('person1ColorInput').value;
         settings.person2Color = document.getElementById('person2ColorInput').value;
 
+        // グローバル設定を保存
         saveSettings();
+
+        // 当月のスナップショットを新しい設定で更新（今後の月にのみ反映）
+        monthData.monthSettings = snapshotCalcSettings();
+        saveMonthData();
+
         alert('設定を保存しました');
     });
 
