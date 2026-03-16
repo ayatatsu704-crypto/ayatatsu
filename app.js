@@ -450,9 +450,30 @@ function getTotalSavingsBalance() {
     return savingsBalances.items.reduce(function(sum, item) { return sum + computeBalance(item, mk); }, 0);
 }
 
+// Balance Sheet用：今月の月次積立を除いた残高（二重計上防止）
+function getTotalSavingsBalanceForBS() {
+    var mk = getMonthKey(currentMonth);
+    return savingsBalances.items.reduce(function(sum, item) {
+        return sum + computeBalanceExcludeCurrentMonthly(item, mk);
+    }, 0);
+}
+
 function computeBalance(item, upToMonthKey) {
     return (item.transactions || [])
         .filter(function(t) { return !upToMonthKey || t.monthKey <= upToMonthKey; })
+        .reduce(function(sum, t) {
+            if (t.type === 'withdraw' || t.type === 'transfer_out') return sum - Math.abs(t.amount || 0);
+            return sum + Math.abs(t.amount || 0);
+        }, 0);
+}
+
+function computeBalanceExcludeCurrentMonthly(item, mk) {
+    return (item.transactions || [])
+        .filter(function(t) {
+            if (!mk || t.monthKey > mk) return false;
+            if (t.type === 'monthly' && t.monthKey === mk) return false; // 今月の月次積立は除外
+            return true;
+        })
         .reduce(function(sum, t) {
             if (t.type === 'withdraw' || t.type === 'transfer_out') return sum - Math.abs(t.amount || 0);
             return sum + Math.abs(t.amount || 0);
@@ -469,7 +490,7 @@ function calculateResults() {
     const person1Savings = monthData.savings.reduce(function(sum, s) { return sum + (s.person1 || 0); }, 0);
     const person2Savings = monthData.savings.reduce(function(sum, s) { return sum + (s.person2 || 0); }, 0);
     const totalSavings = person1Savings + person2Savings;
-    const cumulativeSavings = getTotalSavingsBalance();
+    const cumulativeSavings = getTotalSavingsBalanceForBS();
     const person1Advance = monthData.advances.filter(function(a) { return a.person === 1; }).reduce(function(sum, a) { return sum + (a.amount || 0); }, 0);
     const person2Advance = monthData.advances.filter(function(a) { return a.person === 2; }).reduce(function(sum, a) { return sum + (a.amount || 0); }, 0);
     const totalAdvances = person1Advance + person2Advance;
@@ -611,13 +632,12 @@ function renderSavingsBalancesList() {
         var monthTxns = (item.transactions || []).filter(function(t) { return t.monthKey === currentMk; });
         if (monthTxns.length > 0) {
             html += '<div class="savings-history-inline">';
-            monthTxns.slice().reverse().forEach(function(t, ri) {
-                var realIndex = (item.transactions || []).indexOf(monthTxns[monthTxns.length - 1 - ri]);
+            monthTxns.slice().reverse().forEach(function(t) {
                 var dateStr = t.date || '';
                 var typeLabel = { create: '作成', deposit: '入金', withdraw: '取崩', transfer_out: '振替出', transfer_in: '振替入', monthly: '月次積立' }[t.type] || t.type;
                 var amountClass = (t.type === 'withdraw' || t.type === 'transfer_out') ? 'negative' : 'positive';
                 var sign = amountClass === 'negative' ? '-' : '+';
-                var cancelBtn = t.type !== 'create' && t.type !== 'monthly' ? '<button class="btn btn-small btn-cancel" onclick="cancelSavingsTransaction(\'' + item.id + '\',' + realIndex + ')">取消</button>' : '';
+                var cancelBtn = t.type !== 'create' && t.type !== 'monthly' ? '<button class="btn btn-small btn-cancel" onclick="cancelSavingsTransaction(\'' + item.id + '\',\'' + t.id + '\')">取消</button>' : '';
                 var descHtml = (t.desc || t.description) ? '<span class="hi-desc">' + (t.desc || t.description) + '</span>' : '';
                 html += '<div class="history-inline-row">'
                     + '<div class="hi-left"><span class="hi-date">' + dateStr + '</span><span class="hi-type ' + amountClass + '">' + typeLabel + '</span>' + descHtml + '</div>'
@@ -664,7 +684,7 @@ function renderCumulativeSavingsDetail() {
     }
     var mk = getMonthKey(currentMonth);
     container.innerHTML = savingsBalances.items.map(function(item) {
-        return '<div class="bs-row bs-detail-row"><span>' + item.name + '</span><span>' + formatCurrency(computeBalance(item, mk)) + '</span></div>';
+        return '<div class="bs-row bs-detail-row"><span>' + item.name + '</span><span>' + formatCurrency(computeBalanceExcludeCurrentMonthly(item, mk)) + '</span></div>';
     }).join('');
 }
 
@@ -1013,10 +1033,12 @@ window.closeHistoryModal = function() {
     document.getElementById('historyModal').classList.remove('active');
 };
 
-window.cancelSavingsTransaction = function(itemId, txnIndex) {
+window.cancelSavingsTransaction = function(itemId, txnId) {
     var item = savingsBalances.items.find(function(i) { return i.id === itemId; });
     if (!item) return;
     var txns = item.transactions || [];
+    var txnIndex = txns.findIndex(function(t) { return t.id === txnId; });
+    if (txnIndex < 0) return;
     var t = txns[txnIndex];
     if (!t || t.type === 'create') return;
     if (!confirm('この取引を取り消しますか？\n' + (t.desc || t.description || '') + ' ' + formatCurrency(t.amount))) return;
