@@ -780,7 +780,7 @@ main {
 }
 
 .bs-total {
-    background: var(--bg);
+    background: var(--card-bg);
     padding: 0.625rem 0.875rem;
     border-top: 0.5px solid var(--separator);
     font-weight: 700;
