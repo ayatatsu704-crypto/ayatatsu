@@ -405,6 +405,13 @@ main {
     letter-spacing: -0.03em;
     background: transparent;
     padding: 0.5rem 0;
+    border-bottom: 2px solid var(--separator);
+    border-radius: 0;
+}
+#bankBalance:focus {
+    outline: none;
+    border-bottom-color: var(--primary);
+    background: transparent;
 }
 
 .input-group input:focus,
