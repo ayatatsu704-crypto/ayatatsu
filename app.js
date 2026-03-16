@@ -23,7 +23,6 @@ const defaultMonthData = {
     bankBalance: 0,
     savings: [],
     advances: [],
-    savingsBalances: { items: [] },
     monthSettings: { ...defaultCalcSettings }
 };
 
@@ -271,6 +270,7 @@ function setupHouseholdListener() {
             if (data.lastCalcSettings) {
                 lastCalcSettings = Object.assign({}, defaultCalcSettings, data.lastCalcSettings);
             }
+            if (data.savingsBalances) savingsBalances = data.savingsBalances;
             updateUI();
         });
 }
@@ -309,61 +309,14 @@ function setupMonthListener(monthKey) {
                 if (!monthData.monthSettings) monthData.monthSettings = Object.assign({}, lastCalcSettings);
                 if (!monthData.savings) monthData.savings = [];
                 if (!monthData.advances) monthData.advances = [];
-                if (!monthData.savingsBalances) monthData.savingsBalances = { items: [] };
             } else {
                 monthData = newMonthData();
             }
-            savingsBalances = monthData.savingsBalances;
+            applyMonthlySavingsContributions();
             updateUI();
         });
 }
 
-window.carryOverFromPrevMonth = async function() {
-    var monthKey = getMonthKey(currentMonth);
-    var parts = monthKey.split('-');
-    var prevDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 2, 1);
-    var prevKey = getMonthKey(prevDate);
-
-    var prevDoc = await db.collection('households').doc(householdId)
-        .collection('months').doc(prevKey).get();
-    if (!prevDoc.exists) { alert('前月のデータがありません'); return; }
-
-    var prevData = prevDoc.data();
-    var prevSavingsBalances = prevData.savingsBalances || { items: [] };
-    if (prevSavingsBalances.items.length === 0) { alert('前月の積立残高がありません'); return; }
-
-    if (!confirm('前月の積立残高＋今月の積立額を引き継ぎますか？')) return;
-
-    var today = new Date().toISOString().split('T')[0];
-    var newItems = prevSavingsBalances.items.map(function(item) {
-        var saving = (prevData.savings || []).find(function(s) { return s.name === item.name; });
-        var contribution = saving ? ((saving.person1 || 0) + (saving.person2 || 0)) : 0;
-        var newItem = Object.assign({}, item);
-        delete newItem.appliedMonths;
-        if (contribution > 0) {
-            newItem.balance = (item.balance || 0) + contribution;
-            newItem.history = (item.history || []).concat([{
-                id: Date.now() + Math.random(),
-                date: today,
-                type: '月次積立',
-                amount: contribution,
-                desc: monthKey + ' 繰越'
-            }]);
-        }
-        return newItem;
-    });
-
-    savingsBalances = { items: newItems };
-    monthData.savingsBalances = savingsBalances;
-
-    // 積み立て設定も前月からコピー（今月が空の場合）
-    if (monthData.savings.length === 0 && prevData.savings && prevData.savings.length > 0) {
-        monthData.savings = prevData.savings.map(function(s) { return Object.assign({}, s); });
-    }
-
-    saveMonthData();
-    updateUI();
-};
 
 async function loadAllMonthKeys() {
     if (demoMode) {
@@ -411,9 +364,27 @@ function saveMonthData() {
 }
 
 function saveSavingsBalances() {
-    monthData.savingsBalances = savingsBalances;
     if (demoMode) { localStorage.setItem('demo_savings_balances', JSON.stringify(savingsBalances)); updateUI(); return; }
-    saveMonthData();
+    db.collection('households').doc(householdId).update({ savingsBalances: savingsBalances });
+}
+
+function applyMonthlySavingsContributions() {
+    var mk = getMonthKey(currentMonth);
+    if (!monthData.savings || monthData.savings.length === 0) return;
+    var changed = false;
+    savingsBalances.items.forEach(function(item) {
+        if (!item.transactions) item.transactions = [];
+        // Check if monthly contribution for this month already recorded
+        var alreadyDone = item.transactions.some(function(t) { return t.type === 'monthly' && t.monthKey === mk; });
+        if (alreadyDone) return;
+        var saving = monthData.savings.find(function(s) { return s.name === item.name; });
+        if (!saving) return;
+        var contribution = (saving.person1 || 0) + (saving.person2 || 0);
+        if (contribution === 0) return;
+        item.transactions.push({ id: generateId(), date: new Date().toISOString().split('T')[0], monthKey: mk, type: 'monthly', amount: contribution, desc: mk + ' 月次積立' });
+        changed = true;
+    });
+    if (changed) saveSavingsBalances();
 }
 
 function getAllMonthKeys() {
@@ -425,9 +396,10 @@ function getAllMonthKeys() {
 // ============================================================
 function addSavingsBalance(name, initialBalance) {
     initialBalance = initialBalance || 0;
-    const item = {
-        id: generateId(), name: name, balance: initialBalance,
-        history: [{ date: new Date().toISOString(), type: 'create', amount: initialBalance, description: '作成' }]
+    var mk = getMonthKey(currentMonth);
+    var item = {
+        id: generateId(), name: name,
+        transactions: initialBalance > 0 ? [{ id: generateId(), date: new Date().toISOString().split('T')[0], monthKey: mk, type: 'create', amount: initialBalance, desc: '作成' }] : []
     };
     savingsBalances.items.push(item);
     saveSavingsBalances();
@@ -437,8 +409,8 @@ function addSavingsBalance(name, initialBalance) {
 function depositToSavings(id, amount, description) {
     const item = savingsBalances.items.find(function(i) { return i.id === id; });
     if (item && amount > 0) {
-        item.balance += amount;
-        item.history.push({ date: new Date().toISOString(), type: 'deposit', amount: amount, description: description || '入金' });
+        if (!item.transactions) item.transactions = [];
+        item.transactions.push({ id: generateId(), date: new Date().toISOString().split('T')[0], monthKey: getMonthKey(currentMonth), type: 'deposit', amount: amount, desc: description || '入金' });
         saveSavingsBalances();
         return true;
     }
@@ -447,9 +419,9 @@ function depositToSavings(id, amount, description) {
 
 function withdrawFromSavings(id, amount, description) {
     const item = savingsBalances.items.find(function(i) { return i.id === id; });
-    if (item && amount > 0 && item.balance >= amount) {
-        item.balance -= amount;
-        item.history.push({ date: new Date().toISOString(), type: 'withdraw', amount: amount, description: description || '取り崩し' });
+    if (item && amount > 0) {
+        if (!item.transactions) item.transactions = [];
+        item.transactions.push({ id: generateId(), date: new Date().toISOString().split('T')[0], monthKey: getMonthKey(currentMonth), type: 'withdraw', amount: amount, desc: description || '取り崩し' });
         saveSavingsBalances();
         return true;
     }
@@ -459,12 +431,14 @@ function withdrawFromSavings(id, amount, description) {
 function transferSavings(fromId, toId, amount, description) {
     const fromItem = savingsBalances.items.find(function(i) { return i.id === fromId; });
     const toItem = savingsBalances.items.find(function(i) { return i.id === toId; });
-    if (fromItem && toItem && amount > 0 && fromItem.balance >= amount) {
+    if (fromItem && toItem && amount > 0) {
         const desc = description || (fromItem.name + ' から ' + toItem.name + ' へ振替');
-        fromItem.balance -= amount;
-        toItem.balance += amount;
-        fromItem.history.push({ date: new Date().toISOString(), type: 'transfer_out', amount: amount, to: toItem.name, description: desc });
-        toItem.history.push({ date: new Date().toISOString(), type: 'transfer_in', amount: amount, from: fromItem.name, description: desc });
+        var mk = getMonthKey(currentMonth);
+        var today = new Date().toISOString().split('T')[0];
+        if (!fromItem.transactions) fromItem.transactions = [];
+        if (!toItem.transactions) toItem.transactions = [];
+        fromItem.transactions.push({ id: generateId(), date: today, monthKey: mk, type: 'transfer_out', amount: amount, to: toItem.name, desc: desc });
+        toItem.transactions.push({ id: generateId(), date: today, monthKey: mk, type: 'transfer_in', amount: amount, from: fromItem.name, desc: desc });
         saveSavingsBalances();
         return true;
     }
@@ -472,7 +446,17 @@ function transferSavings(fromId, toId, amount, description) {
 }
 
 function getTotalSavingsBalance() {
-    return savingsBalances.items.reduce(function(sum, item) { return sum + item.balance; }, 0);
+    var mk = getMonthKey(currentMonth);
+    return savingsBalances.items.reduce(function(sum, item) { return sum + computeBalance(item, mk); }, 0);
+}
+
+function computeBalance(item, upToMonthKey) {
+    return (item.transactions || [])
+        .filter(function(t) { return !upToMonthKey || t.monthKey <= upToMonthKey; })
+        .reduce(function(sum, t) {
+            if (t.type === 'withdraw' || t.type === 'transfer_out') return sum - Math.abs(t.amount || 0);
+            return sum + Math.abs(t.amount || 0);
+        }, 0);
 }
 
 // ============================================================
@@ -613,29 +597,31 @@ function renderSavingsBalancesList() {
     const container = document.getElementById('savingsBalancesList');
     if (!container) return;
     if (savingsBalances.items.length === 0) {
-        container.innerHTML = '<div class="empty-state">積立残高がありません</div><button class="btn btn-primary btn-carryover" onclick="carryOverFromPrevMonth()">📥 前月から引き継ぐ</button>';
+        container.innerHTML = '<div class="empty-state">積立残高がありません</div>';
         return;
     }
     const totalBalance = getTotalSavingsBalance();
+    var currentMk = getMonthKey(currentMonth);
     let html = '<div class="savings-balance-total"><span>合計残高</span><span class="total-amount">' + formatCurrency(totalBalance) + '</span></div>';
     savingsBalances.items.forEach(function(item) {
+        var itemBalance = computeBalance(item, currentMk);
         html += '<div class="savings-balance-item">';
-        html += '<div class="savings-balance-header"><div class="savings-balance-info"><div class="savings-balance-name">' + item.name + '</div><div class="savings-balance-amount">' + formatCurrency(item.balance) + '</div></div>';
+        html += '<div class="savings-balance-header"><div class="savings-balance-info"><div class="savings-balance-name">' + item.name + '</div><div class="savings-balance-amount">' + formatCurrency(itemBalance) + '</div></div>';
         html += '<div class="item-actions"><button class="btn btn-small btn-warning" onclick="openWithdrawModal(\'' + item.id + '\')">取崩</button><button class="btn btn-small" onclick="openTransferModal(\'' + item.id + '\')">振替</button><button class="btn btn-small btn-danger" onclick="deleteSavingsBalance(\'' + item.id + '\')">削除</button></div></div>';
-        if (item.history && item.history.length > 0) {
+        var monthTxns = (item.transactions || []).filter(function(t) { return t.monthKey === currentMk; });
+        if (monthTxns.length > 0) {
             html += '<div class="savings-history-inline">';
-            item.history.slice().reverse().forEach(function(h, ri) {
-                var realIndex = item.history.length - 1 - ri;
-                var date = new Date(h.date);
-                var dateStr = date.getFullYear() + '/' + (date.getMonth() + 1) + '/' + date.getDate();
-                var typeLabel = { create: '作成', deposit: '入金', withdraw: '取崩', transfer_out: '振替出', transfer_in: '振替入' }[h.type] || h.type;
-                var amountClass = (h.type === 'withdraw' || h.type === 'transfer_out') ? 'negative' : 'positive';
+            monthTxns.slice().reverse().forEach(function(t, ri) {
+                var realIndex = (item.transactions || []).indexOf(monthTxns[monthTxns.length - 1 - ri]);
+                var dateStr = t.date || '';
+                var typeLabel = { create: '作成', deposit: '入金', withdraw: '取崩', transfer_out: '振替出', transfer_in: '振替入', monthly: '月次積立' }[t.type] || t.type;
+                var amountClass = (t.type === 'withdraw' || t.type === 'transfer_out') ? 'negative' : 'positive';
                 var sign = amountClass === 'negative' ? '-' : '+';
-                var cancelBtn = h.type !== 'create' ? '<button class="btn btn-small btn-cancel" onclick="cancelSavingsTransaction(\'' + item.id + '\',' + realIndex + ')">取消</button>' : '';
-                var descHtml = (h.description && h.type !== 'create') ? '<span class="hi-desc">' + h.description + '</span>' : '';
+                var cancelBtn = t.type !== 'create' && t.type !== 'monthly' ? '<button class="btn btn-small btn-cancel" onclick="cancelSavingsTransaction(\'' + item.id + '\',' + realIndex + ')">取消</button>' : '';
+                var descHtml = (t.desc || t.description) ? '<span class="hi-desc">' + (t.desc || t.description) + '</span>' : '';
                 html += '<div class="history-inline-row">'
                     + '<div class="hi-left"><span class="hi-date">' + dateStr + '</span><span class="hi-type ' + amountClass + '">' + typeLabel + '</span>' + descHtml + '</div>'
-                    + '<div class="hi-right"><span class="hi-amount ' + amountClass + '">' + sign + formatCurrency(h.amount) + '</span>' + cancelBtn + '</div>'
+                    + '<div class="hi-right"><span class="hi-amount ' + amountClass + '">' + sign + formatCurrency(t.amount) + '</span>' + cancelBtn + '</div>'
                     + '</div>';
             });
             html += '</div>';
@@ -676,8 +662,9 @@ function renderCumulativeSavingsDetail() {
         container.innerHTML = '';
         return;
     }
+    var mk = getMonthKey(currentMonth);
     container.innerHTML = savingsBalances.items.map(function(item) {
-        return '<div class="bs-row bs-detail-row"><span>' + item.name + '</span><span>' + formatCurrency(item.balance) + '</span></div>';
+        return '<div class="bs-row bs-detail-row"><span>' + item.name + '</span><span>' + formatCurrency(computeBalance(item, mk)) + '</span></div>';
     }).join('');
 }
 
@@ -944,7 +931,7 @@ window.openWithdrawModal = function(id) {
     currentSavingsBalanceId = id;
     const item = savingsBalances.items.find(function(i) { return i.id === id; });
     document.getElementById('withdrawModalTitle').textContent = item.name + ' から取り崩し';
-    document.getElementById('withdrawCurrentBalance').textContent = formatCurrency(item.balance);
+    document.getElementById('withdrawCurrentBalance').textContent = formatCurrency(computeBalance(item, getMonthKey(currentMonth)));
     document.getElementById('withdrawAmount').value = '';
     document.getElementById('withdrawDescription').value = '';
     document.getElementById('withdrawModal').classList.add('active');
@@ -959,7 +946,7 @@ window.saveWithdraw = function() {
     const amount = parseFloat(document.getElementById('withdrawAmount').value) || 0;
     const item = savingsBalances.items.find(function(i) { return i.id === currentSavingsBalanceId; });
     if (amount <= 0) { alert('金額を入力してください'); return; }
-    if (amount > item.balance) { alert('残高を超える金額は取り崩せません'); return; }
+    if (amount > computeBalance(item, getMonthKey(currentMonth))) { alert('残高を超える金額は取り崩せません'); return; }
     withdrawFromSavings(currentSavingsBalanceId, amount, document.getElementById('withdrawDescription').value);
     closeWithdrawModal();
 };
@@ -968,13 +955,13 @@ window.openTransferModal = function(id) {
     currentSavingsBalanceId = id;
     const item = savingsBalances.items.find(function(i) { return i.id === id; });
     document.getElementById('transferModalTitle').textContent = item.name + ' から振り替え';
-    document.getElementById('transferCurrentBalance').textContent = formatCurrency(item.balance);
+    document.getElementById('transferCurrentBalance').textContent = formatCurrency(computeBalance(item, getMonthKey(currentMonth)));
     document.getElementById('transferAmount').value = '';
     document.getElementById('transferDescription').value = '';
     const select = document.getElementById('transferTo');
     select.innerHTML = savingsBalances.items
         .filter(function(i) { return i.id !== id; })
-        .map(function(i) { return '<option value="' + i.id + '">' + i.name + ' (' + formatCurrency(i.balance) + ')</option>'; })
+        .map(function(i) { return '<option value="' + i.id + '">' + i.name + ' (' + formatCurrency(computeBalance(i, getMonthKey(currentMonth))) + ')</option>'; })
         .join('');
     if (select.options.length === 0) {
         alert('振替先がありません。先に別の積立項目を作成してください。');
@@ -993,7 +980,7 @@ window.saveTransfer = function() {
     const amount = parseFloat(document.getElementById('transferAmount').value) || 0;
     const item = savingsBalances.items.find(function(i) { return i.id === currentSavingsBalanceId; });
     if (amount <= 0) { alert('金額を入力してください'); return; }
-    if (amount > item.balance) { alert('残高を超える金額は振り替えできません'); return; }
+    if (amount > computeBalance(item, getMonthKey(currentMonth))) { alert('残高を超える金額は振り替えできません'); return; }
     transferSavings(currentSavingsBalanceId, toId, amount, document.getElementById('transferDescription').value);
     closeTransferModal();
 };
@@ -1002,20 +989,21 @@ window.viewSavingsHistory = function(id) {
     const item = savingsBalances.items.find(function(i) { return i.id === id; });
     document.getElementById('historyModalTitle').textContent = item.name + ' の履歴';
     const container = document.getElementById('savingsHistoryList');
-    if (item.history.length === 0) {
+    var txns = item.transactions || [];
+    if (txns.length === 0) {
         container.innerHTML = '<div class="empty-state">履歴がありません</div>';
     } else {
-        container.innerHTML = item.history.slice().reverse().map(function(h) {
-            const date = new Date(h.date);
-            const dateStr = date.getFullYear() + '/' + (date.getMonth() + 1) + '/' + date.getDate();
+        container.innerHTML = txns.slice().reverse().map(function(h) {
+            var dateStr = h.date || '';
             let typeLabel = '', amountClass = '';
-            if (h.type === 'create')       { typeLabel = '作成';   amountClass = 'positive'; }
-            else if (h.type === 'deposit') { typeLabel = '入金';   amountClass = 'positive'; }
-            else if (h.type === 'withdraw'){ typeLabel = '取崩';   amountClass = 'negative'; }
-            else if (h.type === 'transfer_out') { typeLabel = '振替出'; amountClass = 'negative'; }
-            else if (h.type === 'transfer_in')  { typeLabel = '振替入'; amountClass = 'positive'; }
-            else { typeLabel = h.type; }
-            return '<div class="history-entry"><div class="history-entry-date">' + dateStr + '</div><div class="history-entry-type">' + typeLabel + '</div><div class="history-entry-amount ' + amountClass + '">' + (amountClass === 'positive' ? '+' : '-') + formatCurrency(h.amount) + '</div><div class="history-entry-desc">' + (h.description || '') + '</div></div>';
+            if (h.type === 'create')            { typeLabel = '作成';     amountClass = 'positive'; }
+            else if (h.type === 'deposit')      { typeLabel = '入金';     amountClass = 'positive'; }
+            else if (h.type === 'monthly')      { typeLabel = '月次積立'; amountClass = 'positive'; }
+            else if (h.type === 'withdraw')     { typeLabel = '取崩';     amountClass = 'negative'; }
+            else if (h.type === 'transfer_out') { typeLabel = '振替出';   amountClass = 'negative'; }
+            else if (h.type === 'transfer_in')  { typeLabel = '振替入';   amountClass = 'positive'; }
+            else { typeLabel = h.type; amountClass = 'positive'; }
+            return '<div class="history-entry"><div class="history-entry-date">' + dateStr + '</div><div class="history-entry-type">' + typeLabel + '</div><div class="history-entry-amount ' + amountClass + '">' + (amountClass === 'positive' ? '+' : '-') + formatCurrency(h.amount) + '</div><div class="history-entry-desc">' + (h.desc || h.description || '') + '</div></div>';
         }).join('');
     }
     document.getElementById('historyModal').classList.add('active');
@@ -1025,32 +1013,33 @@ window.closeHistoryModal = function() {
     document.getElementById('historyModal').classList.remove('active');
 };
 
-window.cancelSavingsTransaction = function(itemId, historyIndex) {
+window.cancelSavingsTransaction = function(itemId, txnIndex) {
     var item = savingsBalances.items.find(function(i) { return i.id === itemId; });
     if (!item) return;
-    var h = item.history[historyIndex];
-    if (!h || h.type === 'create') return;
-    if (!confirm('この取引を取り消しますか？\n' + h.description + ' ' + formatCurrency(h.amount))) return;
-    if (h.type === 'deposit') {
-        item.balance -= h.amount;
-    } else if (h.type === 'withdraw') {
-        item.balance += h.amount;
-    } else if (h.type === 'transfer_out') {
-        item.balance += h.amount;
-        var toItem = savingsBalances.items.find(function(i) { return i.name === h.to; });
-        if (toItem) toItem.balance -= h.amount;
-    } else if (h.type === 'transfer_in') {
-        item.balance -= h.amount;
-        var fromItem = savingsBalances.items.find(function(i) { return i.name === h.from; });
-        if (fromItem) fromItem.balance += h.amount;
+    var txns = item.transactions || [];
+    var t = txns[txnIndex];
+    if (!t || t.type === 'create') return;
+    if (!confirm('この取引を取り消しますか？\n' + (t.desc || t.description || '') + ' ' + formatCurrency(t.amount))) return;
+    if (t.type === 'transfer_out') {
+        var toItem = savingsBalances.items.find(function(i) { return i.name === t.to; });
+        if (toItem && toItem.transactions) {
+            var pairedIdx = toItem.transactions.findIndex(function(x) { return x.type === 'transfer_in' && x.monthKey === t.monthKey && x.amount === t.amount; });
+            if (pairedIdx >= 0) toItem.transactions.splice(pairedIdx, 1);
+        }
+    } else if (t.type === 'transfer_in') {
+        var fromItem = savingsBalances.items.find(function(i) { return i.name === t.from; });
+        if (fromItem && fromItem.transactions) {
+            var pairedIdx = fromItem.transactions.findIndex(function(x) { return x.type === 'transfer_out' && x.monthKey === t.monthKey && x.amount === t.amount; });
+            if (pairedIdx >= 0) fromItem.transactions.splice(pairedIdx, 1);
+        }
     }
-    item.history.splice(historyIndex, 1);
+    txns.splice(txnIndex, 1);
     saveSavingsBalances();
 };
 
 window.deleteSavingsBalance = function(id) {
     const item = savingsBalances.items.find(function(i) { return i.id === id; });
-    if (confirm('「' + item.name + '」を削除しますか？\n残高: ' + formatCurrency(item.balance))) {
+    if (confirm('「' + item.name + '」を削除しますか？\n残高: ' + formatCurrency(computeBalance(item, getMonthKey(currentMonth))))) {
         savingsBalances.items = savingsBalances.items.filter(function(i) { return i.id !== id; });
         saveSavingsBalances();
     }
