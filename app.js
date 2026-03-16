@@ -217,7 +217,7 @@ function showScreen(screen) {
     document.getElementById('householdSetupScreen').classList.toggle('hidden', screen !== 'householdSetup');
     document.getElementById('householdCreatedScreen').classList.toggle('hidden', screen !== 'householdCreated');
     document.getElementById('appContent').classList.toggle('hidden', screen !== 'app');
-    if (screen === 'app') requestAnimationFrame(adjustMainPadding);
+    // padding adjustment no longer needed with sidebar layout
 }
 
 // ============================================================
@@ -653,10 +653,11 @@ function renderHistory() {
 function initEventListeners() {
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
+            var tab = btn.dataset.tab;
             document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
             document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
-            btn.classList.add('active');
-            document.getElementById(btn.dataset.tab).classList.add('active');
+            document.querySelectorAll('.tab-btn[data-tab="' + tab + '"]').forEach(function(b) { b.classList.add('active'); });
+            document.getElementById(tab).classList.add('active');
         });
     });
 
@@ -784,7 +785,7 @@ window.goToMonth = function(key) {
     setupMonthListener(getMonthKey(currentMonth));
     document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
     document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
-    document.querySelector('[data-tab="balance"]').classList.add('active');
+    document.querySelectorAll('.tab-btn[data-tab="balance"]').forEach(function(b) { b.classList.add('active'); });
     document.getElementById('balance').classList.add('active');
 };
 
@@ -969,10 +970,10 @@ window.copyHouseholdCode = function() {
 // 初期化
 // ============================================================
 function adjustMainPadding() {
-    var stickyEl = document.querySelector('.sticky-top');
+    // No longer needed with sidebar layout
     var mainEl = document.querySelector('main');
-    if (stickyEl && mainEl) {
-        mainEl.style.paddingTop = (stickyEl.offsetHeight + 16) + 'px';
+    if (mainEl) {
+        mainEl.style.paddingTop = '';
     }
 }
 
