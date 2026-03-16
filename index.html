@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
@@ -242,14 +242,14 @@
                 <div class="card">
                     <h2>今月の積み立て</h2>
                     <div id="savingsList"></div>
-                    <button id="addSavings" class="btn btn-primary">+ 項目を追加</button>
+                    <button id="addSavings" class="btn btn-primary btn-full">+ 項目を追加</button>
                 </div>
 
                 <div class="card">
                     <h2>積立金残高</h2>
                     <p class="card-description">積み立てた資金の残高を管理します。取り崩しや振り替えができます。</p>
                     <div id="savingsBalancesList"></div>
-                    <button class="btn btn-primary" onclick="openAddBalanceModal()">+ 積立口座を追加</button>
+                    <button class="btn btn-primary btn-full" onclick="openAddBalanceModal()">+ 積立口座を追加</button>
                 </div>
 
                 <!-- 積み立て項目モーダル -->
@@ -382,7 +382,7 @@
                 <div class="card">
                     <h2>立替払い一覧</h2>
                     <div id="advanceList"></div>
-                    <button id="addAdvance" class="btn btn-primary">+ 立替を追加</button>
+                    <button id="addAdvance" class="btn btn-primary btn-full">+ 立替を追加</button>
                 </div>
 
                 <div id="advanceModal" class="modal">
