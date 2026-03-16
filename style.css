@@ -955,7 +955,7 @@ main {
     justify-content: space-between;
     align-items: center;
     padding: 0.875rem 1.25rem;
-    background: var(--bg);
+    background: var(--card-bg);
     color: var(--text);
     border-radius: 0;
     margin-bottom: 0;
@@ -1016,7 +1016,7 @@ main {
 
 .savings-history-inline {
     border-top: 0.5px solid var(--separator);
-    background: var(--bg);
+    background: var(--card-bg);
 }
 
 .history-inline-row {
