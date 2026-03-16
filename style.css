@@ -678,6 +678,15 @@ main {
     display: flex;
 }
 
+.btn-carryover {
+    width: calc(100% - 2.5rem);
+    margin: 0.75rem 1.25rem;
+    padding: 0.7rem;
+    font-size: 0.9rem; font-weight: 600;
+    border-radius: var(--radius-sm);
+    display: flex; justify-content: center;
+}
+
 .btn-small {
     padding: 0.3rem 0.875rem;
     font-size: 0.78rem;

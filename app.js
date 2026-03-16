@@ -312,57 +312,58 @@ function setupMonthListener(monthKey) {
                 if (!monthData.savingsBalances) monthData.savingsBalances = { items: [] };
             } else {
                 monthData = newMonthData();
-                initNewMonth(monthKey);
             }
             savingsBalances = monthData.savingsBalances;
             updateUI();
         });
 }
 
-async function initNewMonth(monthKey) {
-    // 前月のキーを取得
+window.carryOverFromPrevMonth = async function() {
+    var monthKey = getMonthKey(currentMonth);
     var parts = monthKey.split('-');
     var prevDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 2, 1);
     var prevKey = getMonthKey(prevDate);
 
     var prevDoc = await db.collection('households').doc(householdId)
         .collection('months').doc(prevKey).get();
-    if (!prevDoc.exists) return;
+    if (!prevDoc.exists) { alert('前月のデータがありません'); return; }
 
     var prevData = prevDoc.data();
-    if (!prevData.savings || prevData.savings.length === 0) return;
-
-    // 前月の積み立て設定を新月にコピー
-    var newData = Object.assign({}, newMonthData(), {
-        savings: prevData.savings.map(function(s) { return Object.assign({}, s); })
-    });
-
-    // 前月の積立残高を引き継ぎ、今月の積立分を加算
     var prevSavingsBalances = prevData.savingsBalances || { items: [] };
+    if (prevSavingsBalances.items.length === 0) { alert('前月の積立残高がありません'); return; }
+
+    if (!confirm('前月の積立残高＋今月の積立額を引き継ぎますか？')) return;
+
     var today = new Date().toISOString().split('T')[0];
     var newItems = prevSavingsBalances.items.map(function(item) {
-        var saving = prevData.savings.find(function(s) { return s.name === item.name; });
-        if (!saving) return Object.assign({}, item);
-        var contribution = (saving.person1 || 0) + (saving.person2 || 0);
-        if (contribution === 0) return Object.assign({}, item);
-        return Object.assign({}, item, {
-            balance: (item.balance || 0) + contribution,
-            appliedMonths: undefined,
-            history: (item.history || []).concat([{
+        var saving = (prevData.savings || []).find(function(s) { return s.name === item.name; });
+        var contribution = saving ? ((saving.person1 || 0) + (saving.person2 || 0)) : 0;
+        var newItem = Object.assign({}, item);
+        delete newItem.appliedMonths;
+        if (contribution > 0) {
+            newItem.balance = (item.balance || 0) + contribution;
+            newItem.history = (item.history || []).concat([{
                 id: Date.now() + Math.random(),
                 date: today,
                 type: '月次積立',
                 amount: contribution,
-                desc: monthKey + ' 自動積立'
-            }])
-        });
+                desc: monthKey + ' 繰越'
+            }]);
+        }
+        return newItem;
     });
 
-    newData.savingsBalances = { items: newItems };
+    savingsBalances = { items: newItems };
+    monthData.savingsBalances = savingsBalances;
 
-    await db.collection('households').doc(householdId)
-        .collection('months').doc(monthKey).set(newData);
-}
+    // 積み立て設定も前月からコピー（今月が空の場合）
+    if (monthData.savings.length === 0 && prevData.savings && prevData.savings.length > 0) {
+        monthData.savings = prevData.savings.map(function(s) { return Object.assign({}, s); });
+    }
+
+    saveMonthData();
+    updateUI();
+};
 
 async function loadAllMonthKeys() {
     if (demoMode) {
@@ -612,7 +613,7 @@ function renderSavingsBalancesList() {
     const container = document.getElementById('savingsBalancesList');
     if (!container) return;
     if (savingsBalances.items.length === 0) {
-        container.innerHTML = '<div class="empty-state">積立残高がありません</div>';
+        container.innerHTML = '<div class="empty-state">積立残高がありません</div><button class="btn btn-primary btn-carryover" onclick="carryOverFromPrevMonth()">📥 前月から引き継ぐ</button>';
         return;
     }
     const totalBalance = getTotalSavingsBalance();
